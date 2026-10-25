@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   openSync,
+  readFileSync,
   statSync,
   writeFileSync,
   writeSync,
@@ -438,6 +439,16 @@ async function processDocument(text: string, baseDir: string, options: Options):
   }
 }
 
+/** install.sh が導入する mdcat のバージョン（mdcat.version）。 */
+function recommendedMdcatVersion(): string | null {
+  try {
+    const version = readFileSync(resolve(import.meta.dirname, "..", "mdcat.version"), "utf8").trim();
+    return version || null;
+  } catch {
+    return null;
+  }
+}
+
 function commandVersion(command: string): string | null {
   const result = spawnSync(command, ["--version"], { encoding: "utf8", timeout: 5000 });
   if (result.error || result.status !== 0) return null;
@@ -463,10 +474,11 @@ async function printCheck(options: Options): Promise<void> {
   const renderer = await chooseRenderer(options);
   const { columns } = getStdoutSize();
   const mdcat = process.env.MDVIEW_MDCAT ?? "mdcat";
+  const recommended = recommendedMdcatVersion();
   const lines: [string, string][] = [
     ["mdview", VERSION],
     ["node", process.version],
-    ["mdcat", commandVersion(mdcat) ?? "見つかりません"],
+    ["mdcat", `${commandVersion(mdcat) ?? "見つかりません"}${recommended ? ` (推奨 ${recommended})` : ""}`],
     ["pele", "built-in"],
     ["resvg", "built-in (@resvg/resvg-js)"],
     ["TERM", process.env.TERM ?? ""],
@@ -485,6 +497,16 @@ async function printCheck(options: Options): Promise<void> {
   ];
   for (const [label, value] of lines) {
     writeOut(`${label.padEnd(14)}: ${value}\n`);
+  }
+
+  if (recommended) {
+    const installed = /(\d+\.\d+\.\d+)/.exec(commandVersion(mdcat) ?? "")?.[1];
+    if (installed && installed !== recommended) {
+      writeOut(
+        `\nhint: mdcat は ${installed} ですが推奨は ${recommended} です。` +
+          `\n      MDCAT_VERSION=${recommended} ./install.sh  で更新できます。\n`,
+      );
+    }
   }
 
   if (probe.kitty === true && probe.kittyTransfer === false && (await isWezTerm())) {

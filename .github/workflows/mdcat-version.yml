@@ -1,0 +1,72 @@
+name: mdcat version check
+
+# mdcat は npm 依存ではなく GitHub Releases のバイナリなので Dependabot の対象外。
+# mdcat.version に固定したバージョンと最新リリースを比較し、差があれば Issue で知らせる。
+
+on:
+  schedule:
+    # 毎週月曜 09:00 JST (00:00 UTC)
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compare pinned mdcat with latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          pinned=$(tr -d '[:space:]' < mdcat.version)
+          latest=$(gh api repos/swsnr/mdcat/releases/latest --jq '.tag_name' | sed 's/^mdcat-//')
+          echo "pinned=${pinned} latest=${latest}"
+
+          if [ "$pinned" = "$latest" ]; then
+            echo "mdcat は最新です"
+            exit 0
+          fi
+
+          title="mdcat ${latest} が公開されています"
+          existing=$(gh issue list --state open --limit 100 --json number,title \
+            --jq ".[] | select(.title == \"$title\") | .number")
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "最新は \`${latest}\` です（ピン留め: \`${pinned}\`）。"
+            exit 0
+          fi
+
+          body=$(cat <<EOF
+ピン留めしているバージョンと最新リリースに差があります。
+
+| | バージョン |
+|---|---|
+| \`mdcat.version\`（ピン留め） | \`${pinned}\` |
+| 最新リリース | \`${latest}\` |
+
+## 更新手順
+
+\`\`\`bash
+echo "${latest}" > mdcat.version
+MDCAT_VERSION=${latest} MDCAT_FORCE=1 ./install.sh
+pnpm test && pnpm typecheck
+mdview --check          # mdcat の行が ${latest} になることを確認
+\`\`\`
+
+- [ ] \`mdcat.version\` を ${latest} に更新
+- [ ] install.sh で導入して動作確認（\`--ansi\` / \`--columns\` の互換性）
+- [ ] README の「必要なもの」を更新
+
+### リリースノート
+https://github.com/swsnr/mdcat/releases/tag/mdcat-${latest}
+EOF
+          )
+
+          gh issue create --title "$title" --body "$body"

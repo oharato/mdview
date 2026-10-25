@@ -56,7 +56,7 @@ Mermaid はコードブロックのまま流れてしまいます。
 | 依存 | 用途 | 必須 |
 |---|---|---|
 | [Node.js](https://nodejs.org/) 22.12+（LTS） | 実行環境 | 必須 |
-| [mdcat](https://github.com/swsnr/mdcat) | Markdown のテキスト描画 | 必須 |
+| [mdcat](https://github.com/swsnr/mdcat) 2.7.1 | Markdown のテキスト描画（`mdcat.version` で固定） | 必須 |
 | [pele](https://www.npmjs.com/package/pele) | Mermaid の SVG 化 | 同梱（依存関係） |
 | [@resvg/resvg-js](https://www.npmjs.com/package/@resvg/resvg-js) | SVG → PNG | 同梱（依存関係） |
 | [sharp](https://sharp.pixelplumbing.com/) | 画像のデコード・リサイズ | 同梱（依存関係） |
@@ -188,6 +188,27 @@ Sixel を使わないようにしています（使うと「真っ黒な空間�
   - 自動: **Dependabot** が毎週月曜 9:00 (JST) に PR を作成
     （minor/patch は 1 つの PR にまとめ、major は個別）
 - 脆弱性チェック: `pnpm deps:audit`
+
+#### mdcat（外部バイナリ）
+
+`mdcat` は npm 依存ではなく GitHub Releases のバイナリなので **Dependabot の対象外**です。
+そのため次のように管理しています。
+
+- バージョンは [`mdcat.version`](mdcat.version) に固定（例: `2.7.1`）。`install.sh` はこのバージョンを取得し、
+  `B2SUMS.txt`（BLAKE2b-512）でチェックサムを検証します
+- 週次の GitHub Actions（`.github/workflows/mdcat-version.yml`）が最新リリースと比較し、
+  差があれば **Issue を作成**して知らせます
+- 手動で更新する場合:
+
+  ```bash
+  echo "2.8.0" > mdcat.version
+  MDCAT_VERSION=2.8.0 MDCAT_FORCE=1 ./install.sh
+  pnpm test && mdview --check
+  ```
+
+- 一時的に別バージョンを使う: `MDCAT_VERSION=latest ./install.sh`（最新） /
+  `MDCAT_VERSION=2.6.0 ./install.sh`
+- インストール済みと推奨の差は `mdview --check` の `mdcat` 行と hint で確認できます
 - `@types/node` は Node.js の LTS メジャー（24）に合わせて固定しています
   （Dependabot も major 更新は無視する設定）
 

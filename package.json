@@ -7,7 +7,8 @@
     "mdview": "./dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "mdcat.version"
   ],
   "engines": {
     "node": ">=22.12"
