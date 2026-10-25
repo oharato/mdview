@@ -1,0 +1,10 @@
+# 依存関係
+pele/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS / エディタ
+.DS_Store
+*.swp
