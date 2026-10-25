@@ -300,6 +300,23 @@ pnpm build
   セル内のインライン記法は太字・斜体・打ち消し線・コード・リンクのみ対応し、
   折り返しは行いません（幅に収まらない場合は `…` で切り詰めます）。
 
+## 類似ツール
+
+| ツール | できること | mdview との違い |
+|---|---|---|
+| [ink](https://github.com/borghei/ink) | Rust 製の TUI。画像・Mermaid（独自レンダラ）・表・数式・検索・テーマ・タブ | 高機能な TUI。本文は独自レンダラで描画。Mermaid は独自実装（Pele ではない） |
+| [presenterm](https://github.com/mfontanini/presenterm) | ターミナルでスライド。画像・Mermaid | 発表用途。Mermaid に mermaid-cli（Chrome）が必要 |
+| [glow](https://github.com/charmbracelet/glow) | 定番の Markdown ビューア（TUI） | 画像・Mermaid は非対応 |
+| [mdcat](https://github.com/swsnr/mdcat) | 高品質なテキスト描画。画像は kitty/iTerm2/Terminology のみ | Mermaid 非対応、表の CJK 幅に未対応。mdview はこの上に機能を足しています |
+
+mdview は「**mdcat の見た目を保ったまま、画像と Mermaid を足す**」ことに絞ったツールです。
+もっと多機能な TUI（検索・テーマ・数式）が欲しい場合は ink、スライドなら presenterm が候補です。
+
+> ink 0.13.0 で同じデモを表示して比較した範囲では、表の CJK 揃えは両方とも正しく、
+> ink は `--plain` でも Mermaid をテキストアートとして描画できました（mdview は
+> 画像プロトコルが使えない環境では半ブロック描画になります）。
+> 画像パスの解決は ink が CWD 基準、mdview が Markdown ファイル基準です。
+
 ## ライセンス
 
 MIT
