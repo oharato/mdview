@@ -42,7 +42,7 @@ import {
   windowPixels,
 } from "./term.js";
 
-const VERSION = "0.3.3";
+const VERSION = "0.3.4";
 const DIM = "\x1b[2m";
 const RESET = "\x1b[0m";
 
@@ -461,12 +461,22 @@ async function drawImage(
     if (renderer === "kitty") {
       const [cellWidth, cellHeight] = await cellPixels();
       const cols = Math.max(1, Math.round(resized.width / cellWidth));
-      const placementRows = Math.max(1, Math.ceil(resized.height / cellHeight));
+      const rows = Math.max(1, Math.ceil(resized.height / cellHeight));
+
+      // C=1（カーソル固定）で貼ると、WezTerm は「カーソルより下に残っている行」までしか
+      // 画像を貼らない（term/src/terminalstate/image.rs の height_in_cells の上限）。
+      // 画面下端で実行すると数行しか貼られず見えなくなるため、先に空行を確保して
+      // スクロールさせ、その領域に貼ってからカーソルを進める。
+      writeOut("\r" + "\n".repeat(rows) + `\x1b[${rows}A`);
       writeOut(
-        encodeKitty(png, { cols, rows: placementRows, imageId: nextKittyImageId() }),
+        encodeKitty(png, {
+          cols,
+          rows,
+          imageId: nextKittyImageId(),
+          holdCursor: true,
+        }),
       );
-      // C=1（カーソルを動かさない）で送っているので、こちらで行を進める
-      writeOut("\n".repeat(placementRows));
+      writeOut(`\x1b[${rows}B`);
       return;
     }
 

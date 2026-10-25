@@ -17,7 +17,7 @@ describe("encodeKitty", () => {
   const png = Buffer.alloc(12_000, 7); // 4096 base64 文字を超えるサイズ
 
   it("制御キーを付けて最初のチャンクを送る", () => {
-    const commands = splitCommands(encodeKitty(png, { cols: 40, rows: 10 }));
+    const commands = splitCommands(encodeKitty(png, { cols: 40, rows: 10, holdCursor: true }));
     expect(commands[0]!.control).toBe("a=T,f=100,C=1,c=40,r=10,q=2,m=1");
   });
 
@@ -39,6 +39,13 @@ describe("encodeKitty", () => {
     const commands = splitCommands(encodeKitty(png, { cols: 4, rows: 2 }));
     const decoded = Buffer.from(commands.map((c) => c.payload).join(""), "base64");
     expect(decoded.equals(png)).toBe(true);
+  });
+
+  it("image id を付けると i= が入り、C=1 は holdCursor のときだけ付く", () => {
+    const withId = splitCommands(encodeKitty(png, { imageId: 42, cols: 10, rows: 5 }));
+    expect(withId[0]!.control).toBe("a=T,f=100,i=42,c=10,r=5,q=2,m=1");
+    const hold = splitCommands(encodeKitty(png, { imageId: 42, holdCursor: true }));
+    expect(hold[0]!.control).toBe("a=T,f=100,i=42,C=1,q=2,m=1");
   });
 
   it("空のバッファでは何も出力しない", () => {
