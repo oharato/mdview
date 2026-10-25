@@ -316,6 +316,11 @@ mdview は「**mdcat の見た目を保ったまま、画像と Mermaid を足�
 > ink は `--plain` でも Mermaid をテキストアートとして描画できました（mdview は
 > 画像プロトコルが使えない環境では半ブロック描画になります）。
 > 画像パスの解決は ink が CWD 基準、mdview が Markdown ファイル基準です。
+>
+> なお ink の kitty レンダラは Unicode placeholder 方式（`ratatui-image`）のため、
+> これを実装していない WezTerm では画像が `□` の並びになります。その場合は
+> `ink --image-protocol iterm2` を指定してください（WezTerm は iTerm2 方式に対応）。
+> mdview は直接配置のみを使うので、WezTerm でもそのまま表示されます。
 
 ## ライセンス
 
