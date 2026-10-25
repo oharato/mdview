@@ -1,2 +1,8 @@
+# pnpm の設定（pnpm 12 では pnpm-workspace.yaml に集約される）
+#
+# pnpm 12 は既定で「公開から 24 時間以上経過したバージョンのみインストール可」
+# （minimumReleaseAge = 1440 分）という supply-chain ポリシーを持つ。
+# 公開直後のバージョンを使う場合のみ、ここに例外として追加する。
+# 時間が経過したら削除してよい（例: pele@1.10.0 は 2026-10-24 公開）。
 minimumReleaseAgeExclude:
   - pele@1.10.0

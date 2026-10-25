@@ -1,0 +1,50 @@
+version: 2
+updates:
+  # npm / pnpm の依存
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    versioning-strategy: increase # exact 固定を最新版へ引き上げる
+    commit-message:
+      prefix: "chore(deps)"
+    ignore:
+      # @types/node は Node.js の LTS メジャー（24）に合わせる
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+    groups:
+      # minor / patch は 1 つの PR にまとめる（major は個別に来る）
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # GitHub Actions のバージョン
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    commit-message:
+      prefix: "chore(ci)"
+    ignore:
+      # @types/node は Node.js の LTS メジャー（24）に合わせる
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+    groups:
+      actions:
+        patterns:
+          - "*"

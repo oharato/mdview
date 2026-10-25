@@ -178,6 +178,24 @@ Sixel を使わないようにしています（使うと「真っ黒な空間�
 `kitty support` / `sixel support` が `no` です。`-r kitty` などで強制するか、
 多重化ツールのパススルー設定を確認してください。
 
+### 依存関係の管理
+
+- バージョンは **exact（例 `2.6.2`）で固定**し、`pnpm-lock.yaml` もコミットしています
+  （`.npmrc` の `save-exact=true` / `engine-strict=true`）
+- pnpm のバージョンは `packageManager`、Node.js は `engines` で固定・制約
+- 更新方法:
+  - 手動: `pnpm deps:outdated` で確認 → `pnpm deps:update`（`pnpm up --latest`）→ CI
+  - 自動: **Dependabot** が毎週月曜 9:00 (JST) に PR を作成
+    （minor/patch は 1 つの PR にまとめ、major は個別）
+- 脆弱性チェック: `pnpm deps:audit`
+- `@types/node` は Node.js の LTS メジャー（24）に合わせて固定しています
+  （Dependabot も major 更新は無視する設定）
+
+> pnpm 12 は既定で「公開から 24 時間以内のバージョンはインストールしない」という
+> supply-chain ポリシーを持っています。公開直後のバージョンを使う場合のみ
+> `pnpm-workspace.yaml` の `minimumReleaseAgeExclude` に追加してください。
+> Dependabot の PR が公開直後で CI に落ちる場合は、少し待って rebase すれば通ります。
+
 ### 開発
 
 ```bash

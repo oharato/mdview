@@ -1,15 +1,7 @@
 {
   "name": "mdview",
   "version": "0.4.0",
-  "description": "mdcat + inline images and Mermaid in the terminal (Sixel / half-blocks, no Chrome)",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/oharato/mdview.git"
-  },
-  "homepage": "https://github.com/oharato/mdview#readme",
-  "bugs": {
-    "url": "https://github.com/oharato/mdview/issues"
-  },
+  "description": "mdcat + inline images and Mermaid in the terminal (Kitty graphics / Sixel / iTerm2, no Chrome)",
   "type": "module",
   "bin": {
     "mdview": "./dist/cli.js"
@@ -26,25 +18,37 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "start": "node dist/cli.js",
-    "prepare": "pnpm build"
+    "prepare": "pnpm build",
+    "deps:outdated": "pnpm outdated",
+    "deps:update": "pnpm up --latest",
+    "deps:audit": "pnpm audit"
   },
   "keywords": [
     "markdown",
     "mdcat",
     "mermaid",
     "sixel",
+    "kitty-graphics",
     "terminal",
     "cli"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oharato/mdview.git"
+  },
+  "homepage": "https://github.com/oharato/mdview#readme",
+  "bugs": {
+    "url": "https://github.com/oharato/mdview/issues"
+  },
   "dependencies": {
-    "@resvg/resvg-js": "^2.6.2",
-    "pele": "^1.10.0",
-    "sharp": "^0.35.5"
+    "@resvg/resvg-js": "2.6.2",
+    "pele": "1.10.0",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
-    "@types/node": "^24.9.2",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
   }
 }
