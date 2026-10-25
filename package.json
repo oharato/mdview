@@ -2,6 +2,14 @@
   "name": "mdview",
   "version": "0.2.0",
   "description": "mdcat + inline images and Mermaid in the terminal (Sixel / half-blocks, no Chrome)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oharato/mdview.git"
+  },
+  "homepage": "https://github.com/oharato/mdview#readme",
+  "bugs": {
+    "url": "https://github.com/oharato/mdview/issues"
+  },
   "type": "module",
   "bin": {
     "mdview": "./dist/cli.js"
