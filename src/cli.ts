@@ -35,11 +35,13 @@ import {
   cellPixels,
   isInteractive,
   kittySupported,
+  probeTerminal,
   sixelSupported,
+  terminalName,
   windowPixels,
 } from "./term.js";
 
-const VERSION = "0.3.0";
+const VERSION = "0.3.1";
 const DIM = "\x1b[2m";
 const RESET = "\x1b[0m";
 
@@ -360,9 +362,36 @@ async function renderImage(block: ImageBlock, baseDir: string, options: Options)
   await showImage(source, block.alt, options);
 }
 
+/**
+ * 端末が WezTerm か。WezTerm は DA1 で Sixel 対応 (属性 4) を返すが実装していないため、
+ * XTVERSION (`CSI > 0 q`) の応答で識別して Sixel を使わない。
+ * 参考: https://github.com/wezterm/wezterm/issues/8070
+ */
+async function isWezTerm(): Promise<boolean> {
+  if ((process.env.TERM_PROGRAM ?? "").toLowerCase() === "wezterm") return true;
+  return (await terminalName()) === "wezterm";
+}
+
+let warnedKittyTransfer = false;
+
 async function chooseRenderer(options: Options): Promise<Exclude<Renderer, "auto">> {
   if (options.renderer !== "auto") return options.renderer;
   if (await kittySupported()) return "kitty";
+
+  const probe = await probeTerminal();
+  if (probe.kitty === true && probe.kittyTransfer === false && !warnedKittyTransfer) {
+    warnedKittyTransfer = true;
+    warn(
+      "kitty graphics の画像転送に失敗しました（Windows の ssh.exe / ConPTY 経由では画像が描画されないことがあります）。" +
+        "`wezterm ssh` での接続か、-r blocks をお試しください",
+    );
+  }
+
+  if (await isWezTerm()) {
+    // WezTerm は iTerm2 プロトコルも話せる。ただし Windows の ssh.exe (ConPTY) 経由では
+    // 画像自体が描画されないことがあるため、kitty が使えない場合は半ブロックにする。
+    return detectIterm2() ? "iterm" : "blocks";
+  }
   if (await sixelSupported()) return "sixel";
   if (detectIterm2()) return "iterm";
   return "blocks";
@@ -467,6 +496,15 @@ function commandExists(command: string): boolean {
   return spawnSync("which", [command], { encoding: "utf8" }).status === 0;
 }
 
+/** セルフテストの結果を文字列にする。 */
+async function kittyTransferStatus(): Promise<string> {
+  const probe = await probeTerminal();
+  if (probe.kitty !== true) return "n/a (kitty 非対応)";
+  if (probe.kittyTransfer === true) return "ok";
+  if (probe.kittyTransfer === false) return "失敗 (画像データが届かない)";
+  return "未検証";
+}
+
 async function printCheck(options: Options): Promise<void> {
   const sixel = await sixelSupported(options.refresh);
   const kitty = await kittySupported();
@@ -483,11 +521,13 @@ async function printCheck(options: Options): Promise<void> {
     ["resvg", "built-in (@resvg/resvg-js)"],
     ["mmdc", commandExists("mmdc") ? (commandVersion("mmdc") ?? "found") : "未インストール (任意)"],
     ["TERM", process.env.TERM ?? ""],
+    ["terminal", (await terminalName()) || "不明 (XTVERSION 未応答)"],
     ["columns", String(columns)],
     ["cell pixels", `${cellWidth}x${cellHeight}`],
     ["window pixels", window ? `${window[0]}x${window[1]}` : "不明"],
     ["interactive", String(isInteractive())],
     ["kitty support", kitty ? "yes" : "no"],
+    ["kitty transfer", await kittyTransferStatus()],
     ["sixel support", sixel ? "yes" : "no"],
     ["iterm2 support", detectIterm2() ? "yes" : "no"],
     ["renderer", renderer],

@@ -137,10 +137,43 @@ mdview --refresh doc.md               # 端末判定をやり直す
 ```bash
 mdview --check        # 端末・依存・採用プロトコルを表示
 mdview --refresh .    # 端末判定をやり直す（キャッシュを無視）
+mdview -r blocks .    # 画像プロトコルを使わず半ブロックで描画
 ```
 
-画像が粗い（半ブロックになっている）場合は `--check` の `kitty support` / `sixel support` が
-`no` になっています。`-r kitty` などで強制するか、多重化ツールのパススルー設定を確認してください。
+`--check` の見方:
+
+| 行 | 意味 |
+|---|---|
+| `terminal` | XTVERSION で識別した端末名（例: `wezterm` / `windows terminal`） |
+| `kitty support` | 端末が kitty graphics のクエリに応答したか |
+| `kitty transfer` | 実際に（複数チャンクの）画像データを送って応答があったか |
+| `sixel support` | DA1 の Sixel 属性 |
+| `renderer` | 実際に採用されたプロトコル |
+
+**`kitty support: yes` なのに `kitty transfer: 失敗` の場合**
+
+端末は kitty graphics を話すが、画像データが届いていません。
+Windows の WezTerm から通常の `ssh`（`ssh.exe` → ConPTY 経由）で接続している場合、
+この経路では画像プロトコルが壊れることが知られています
+（[wezterm#8070](https://github.com/wezterm/wezterm/issues/8070)）。
+WezTerm 内蔵の SSH クライアントに切り替えると ConPTY を迂回でき、フル解像度で表示されます。
+
+```powershell
+wezterm ssh oharato@192.168.242.100
+```
+
+この場合 mdview は自動で半ブロック描画にフォールバックし、警告を 1 行表示します。
+
+**WezTerm の Sixel 誤広告について**
+
+WezTerm は DA1（`ESC [ c`）で「Sixel 対応」（属性 `4`）を返しますが、実際には
+Sixel を実装していません。mdview は XTVERSION（`CSI > 0 q`）で WezTerm を識別し、
+Sixel を使わないようにしています（使うと「真っ黒な空間」になるため）。
+
+**画像が粗い（半ブロックになっている）場合**
+
+`kitty support` / `sixel support` が `no` です。`-r kitty` などで強制するか、
+多重化ツールのパススルー設定を確認してください。
 
 ### 開発
 
@@ -157,7 +190,8 @@ pnpm build
 - tmux / screen 経由では、パススルー設定（`set -g allow-passthrough on` など）が無い限り
   画像プロトコルは通りません。その場合は半ブロック描画になります。
 - Herdr は Kitty graphics を解釈して外側の端末へ転送します。`terminal.kitty_graphics = false`
-  にしている場合は半ブロックになります。
+  にしている場合は半ブロックになります。外側の接続経路（ConPTY など）が画像を壊す場合は
+  Herdr 経由でも表示されません。
 - `less` などのページャと併用すると画像は出ません（mdcat 単体と同じ制約）。
 - 半ブロック描画は 1 セル 2 ピクセル相当のため、文字を含む複雑な図は粗くなります。
   Sixel 対応端末での利用を推奨します。
