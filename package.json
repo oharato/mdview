@@ -1,6 +1,6 @@
 {
   "name": "mdview",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "mdcat + inline images and Mermaid in the terminal (Kitty graphics / Sixel / iTerm2, no Chrome)",
   "type": "module",
   "bin": {

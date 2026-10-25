@@ -31,6 +31,8 @@ import { mermaidCacheDir, remoteCacheDir, shortHash } from "./paths.js";
 import { encodeSixel } from "./sixel.js";
 import { encodeIterm2, detectIterm2 } from "./iterm.js";
 import { encodeKitty } from "./kitty.js";
+import { BufferSink, StreamSink, runPager, type Sink } from "./pager.js";
+import { extractSection, listHeadings } from "./sections.js";
 import { checkForUpdate, currentVersion, describeInstall, runSelfUpdate } from "./update.js";
 import {
   cellPixels,
@@ -50,6 +52,12 @@ const RESET = "\x1b[0m";
 type Renderer = "auto" | "kitty" | "sixel" | "iterm" | "blocks";
 type ThemeSetting = "auto" | MermaidTheme;
 
+interface RenderContext {
+  sink: Sink;
+  /** ページャ用に溜めているか（画像の配置方法が変わる）。 */
+  pageMode: boolean;
+}
+
 interface Options {
   files: string[];
   width: number;
@@ -68,6 +76,9 @@ interface Options {
   refresh: boolean;
   update: boolean;
   checkUpdate: boolean;
+  paginate: boolean;
+  toc: boolean;
+  section: number | null;
 }
 
 const HELP = `mdview ${VERSION} — mdcat + 端末内画像/Mermaid 描画
@@ -86,6 +97,9 @@ const HELP = `mdview ${VERSION} — mdcat + 端末内画像/Mermaid 描画
       --[no-]upscale        小さい画像を端末幅まで拡大 (既定: 有効, 最大3倍)
       --light               明るい背景の端末として扱う
   -c, --no-colour           色・画像を無効化
+  -p, --paginate            ページャで表示（space:次へ b:前へ t:見出し一覧 q:終了）
+      --toc                 見出しの一覧を表示して終了
+      --section N           N 番目の見出しのセクションだけを表示
       --mermaid-theme T     auto | default | dark | neutral
       --mermaid-width N     Mermaid のラスタライズ幅 px (既定: 2048)
       --check               端末・依存の対応状況を表示して終了
@@ -102,9 +116,12 @@ const HELP = `mdview ${VERSION} — mdcat + 端末内画像/Mermaid 描画
 `;
 
 function getStdoutSize(): { columns: number; rows: number } {
-  const columns = process.stdout.columns ?? 100;
-  const rows = process.stdout.rows ?? 40;
-  return { columns, rows };
+  const columns = process.stdout.columns ?? 0;
+  const rows = process.stdout.rows ?? 0;
+  return {
+    columns: columns >= 20 ? columns : 100,
+    rows: rows >= 5 ? rows : 40,
+  };
 }
 
 /** fd 1 へ確実に書き込む（バッファリングによる順序の乱れを避ける）。 */
@@ -163,6 +180,9 @@ function parseOptions(argv: string[]): Options {
         refresh: { type: "boolean" },
         "check-update": { type: "boolean" },
         update: { type: "boolean" },
+        paginate: { type: "boolean", short: "p" },
+        toc: { type: "boolean" },
+        section: { type: "string" },
         version: { type: "boolean", short: "V" },
         help: { type: "boolean", short: "h" },
       },
@@ -226,19 +246,27 @@ function parseOptions(argv: string[]): Options {
     refresh: v.refresh ?? false,
     update: v.update ?? false,
     checkUpdate: v["check-update"] ?? false,
+    paginate: v.paginate ?? false,
+    toc: v.toc ?? false,
+    section: v.section === undefined ? null : Number.parseInt(v.section, 10),
   };
 }
 
-function runMdcat(chunk: string, options: Options): void {
+async function runMdcat(chunk: string, options: Options, ctx: RenderContext): Promise<void> {
   const mdcat = process.env.MDVIEW_MDCAT ?? "mdcat";
   const args = ["--columns", String(options.width)];
   if (options.noColour) args.push("--no-colour");
   else args.push("--ansi");
 
-  const result = spawnSync(mdcat, args, { input: chunk, stdio: ["pipe", "inherit", "inherit"] });
-  if (result.error || result.status !== 0) {
-    writeOut(chunk);
+  if (!ctx.pageMode) {
+    const result = spawnSync(mdcat, args, { input: chunk, stdio: ["pipe", "inherit", "inherit"] });
+    if (result.error || result.status !== 0) writeOut(chunk);
+    return;
   }
+
+  const result = spawnSync(mdcat, args, { input: chunk, encoding: "utf8" });
+  if (result.error || result.status !== 0) await ctx.sink.text(chunk);
+  else await ctx.sink.text(result.stdout ?? "");
 }
 
 async function resolveTheme(options: Options): Promise<MermaidTheme> {
@@ -253,7 +281,7 @@ function mermaidCachePath(code: string, theme: MermaidTheme, width: number): str
   return resolve(dir, `${key}.png`);
 }
 
-async function renderMermaid(block: MermaidBlock, options: Options): Promise<void> {
+async function renderMermaid(block: MermaidBlock, options: Options, ctx: RenderContext): Promise<void> {
   const theme = await resolveTheme(options);
   const cachePath = mermaidCachePath(block.code, theme, options.mermaidWidth);
 
@@ -263,12 +291,12 @@ async function renderMermaid(block: MermaidBlock, options: Options): Promise<voi
       writeFileSync(cachePath, png);
     } catch (error) {
       warn(`Mermaid を描画できません: ${(error as Error).message}`);
-      runMdcat("```mermaid\n" + block.code + "```\n", options);
+      await runMdcat("```mermaid\n" + block.code + "```\n", options, ctx);
       return;
     }
   }
 
-  if (existsSync(cachePath)) await showImage(cachePath, "mermaid", options);
+  if (existsSync(cachePath)) await showImage(cachePath, "mermaid", options, ctx);
 }
 
 async function resolveImageSource(src: string, baseDir: string): Promise<string | null> {
@@ -296,13 +324,13 @@ async function resolveImageSource(src: string, baseDir: string): Promise<string 
   return path;
 }
 
-async function renderImage(block: ImageBlock, baseDir: string, options: Options): Promise<void> {
+async function renderImage(block: ImageBlock, baseDir: string, options: Options, ctx: RenderContext): Promise<void> {
   const source = await resolveImageSource(block.src, baseDir);
   if (!source) {
     writeOut(`${DIM}[画像: ${block.alt || block.src}]${RESET}\n`);
     return;
   }
-  await showImage(source, block.alt, options);
+  await showImage(source, block.alt, options, ctx);
 }
 
 let warnedKittyTransfer = false;
@@ -349,7 +377,7 @@ async function chooseRenderer(options: Options): Promise<Exclude<Renderer, "auto
   return "blocks";
 }
 
-async function showImage(path: string, alt: string, options: Options): Promise<void> {
+async function showImage(path: string, alt: string, options: Options, ctx: RenderContext): Promise<void> {
   if (options.noColour) {
     writeOut(`[画像: ${alt || basename(path)}]\n`);
     return;
@@ -358,7 +386,7 @@ async function showImage(path: string, alt: string, options: Options): Promise<v
   if (isSvg(path)) {
     try {
       const image = await loadSvg(path, options.mermaidWidth, await resolveTheme(options));
-      await drawImage(image, options);
+      await drawImage(image, options, ctx);
     } catch (error) {
       warn(`SVG を描画できません: ${path} (${(error as Error).message})`);
     }
@@ -372,12 +400,13 @@ async function showImage(path: string, alt: string, options: Options): Promise<v
     warn(`画像を開けません: ${path} (${(error as Error).message})`);
     return;
   }
-  await drawImage(image, options);
+  await drawImage(image, options, ctx);
 }
 
 async function drawImage(
   image: { width: number; height: number; data: Buffer },
   options: Options,
+  ctx: RenderContext,
 ): Promise<void> {
   const background = parseBackground(options.imageBg, options.light);
   if (background) image = await flattenImage(image, background);
@@ -394,8 +423,12 @@ async function drawImage(
     const resized = await resizeImage(image, width, height);
 
     if (renderer === "sixel") {
-      writeOut(encodeSixel(resized, options.imageColors));
-      writeOut("\n");
+      const [, cellHeight] = await cellPixels();
+      const rows = Math.max(1, Math.ceil(resized.height / cellHeight));
+      await ctx.sink.image(rows, () => {
+        writeOut(encodeSixel(resized, options.imageColors));
+        if (!ctx.pageMode) writeOut("\n");
+      });
       return;
     }
 
@@ -404,35 +437,74 @@ async function drawImage(
       const [cellWidth, cellHeight] = await cellPixels();
       const cols = Math.max(1, Math.round(resized.width / cellWidth));
       const rows = Math.max(1, Math.ceil(resized.height / cellHeight));
+      const image = encodeKitty(png, {
+        cols,
+        rows,
+        imageId: nextKittyImageId(),
+        holdCursor: true,
+      });
+
+      if (ctx.pageMode) {
+        // ページャは行位置を明示して描画するので、そのまま貼るだけでよい
+        await ctx.sink.image(rows, () => writeOut(image));
+        return;
+      }
 
       // C=1（カーソル固定）で貼ると、WezTerm は「カーソルより下に残っている行」までしか
       // 画像を貼らない（term/src/terminalstate/image.rs の height_in_cells の上限）。
       // 画面下端で実行すると数行しか貼られず見えなくなるため、先に空行を確保して
       // スクロールさせ、その領域に貼ってからカーソルを進める。
-      writeOut("\r" + "\n".repeat(rows) + `\x1b[${rows}A`);
-      writeOut(
-        encodeKitty(png, {
-          cols,
-          rows,
-          imageId: nextKittyImageId(),
-          holdCursor: true,
-        }),
-      );
-      writeOut(`\x1b[${rows}B`);
+      await ctx.sink.image(rows, () => {
+        writeOut("\r" + "\n".repeat(rows) + `\x1b[${rows}A`);
+        writeOut(image);
+        writeOut(`\x1b[${rows}B`);
+      });
       return;
     }
 
-    writeOut(encodeIterm2(png));
+    await ctx.sink.image(
+      Math.max(1, Math.ceil(resized.height / (await cellPixels())[1])),
+      () => writeOut(encodeIterm2(png)),
+    );
     return;
   }
 
   const { rows } = getStdoutSize();
   const plan = planHalfBlocks(image.width, image.height, options.imageWidth, Math.max(4, rows - 3));
   const resized = await resizeImage(image, plan.cols, plan.rows * 2);
-  writeOut(renderHalfBlocks(resized, options.colorMode));
+  const rendered = renderHalfBlocks(resized, options.colorMode);
+  await ctx.sink.text(rendered);
 }
 
-async function processDocument(text: string, baseDir: string, options: Options): Promise<void> {
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Buffer));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+/** `--toc`: 見出しの一覧を表示する。 */
+async function printToc(options: Options): Promise<void> {
+  for (const name of options.files) {
+    const text = name === "-" ? await readStdin() : await readFile(resolve(name), "utf8");
+    const headings = listHeadings(text);
+    if (options.files.length > 1) writeOut(`\n${name}\n`);
+    if (headings.length === 0) {
+      writeOut("(見出しがありません)\n");
+      continue;
+    }
+    for (const heading of headings) {
+      const indent = "  ".repeat(heading.level - 1);
+      writeOut(`${String(heading.index).padStart(3)}  ${indent}${heading.text}\n`);
+    }
+  }
+}
+
+async function processDocument(
+  text: string,
+  baseDir: string,
+  options: Options,
+  ctx: RenderContext,
+): Promise<void> {
   const mermaid = extractMermaid(text);
   const images = extractImages(mermaid.text, mermaid.blocks.length);
   const tables = extractTables(images.text);
@@ -440,21 +512,22 @@ async function processDocument(text: string, baseDir: string, options: Options):
 
   for (const segment of splitSegments(tables.text)) {
     if (segment.kind === "text") {
-      runMdcat(segment.body, options);
+      await runMdcat(segment.body, options, ctx);
       continue;
     }
     if (segment.kind === "table") {
       const table = tables.tables[segment.index];
       if (table) {
-        writeOut(renderTable(table, { maxWidth: options.width, colour: !options.noColour }));
-        writeOut("\n");
+        await ctx.sink.text(
+          renderTable(table, { maxWidth: options.width, colour: !options.noColour }) + "\n",
+        );
       }
       continue;
     }
     const asset = assets[segment.index];
     if (!asset) continue;
-    if ("code" in asset) await renderMermaid(asset, options);
-    else await renderImage(asset, baseDir, options);
+    if ("code" in asset) await renderMermaid(asset, options, ctx);
+    else await renderImage(asset, baseDir, options, ctx);
   }
 }
 
@@ -573,18 +646,51 @@ async function main(): Promise<void> {
     await chooseRenderer(options);
   }
 
+  if (options.toc) {
+    await printToc(options);
+    return;
+  }
+
+  if (options.section !== null && !Number.isInteger(options.section)) {
+    fail("--section には番号を指定してください（--toc で一覧を表示できます）");
+  }
+
+  const rows = process.stdout.rows ?? 0;
+  const usePager = options.paginate && isInteractive() && Boolean(process.stdin.isTTY);
+  const sink = usePager ? new BufferSink() : new StreamSink();
+  const ctx: RenderContext = { sink, pageMode: usePager };
+
   for (const name of options.files) {
+    const baseDir = name === "-" ? process.cwd() : dirname(resolve(name));
+    let text: string;
+
     if (name === "-") {
-      const chunks: Buffer[] = [];
-      for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Buffer));
-      await processDocument(Buffer.concat(chunks).toString("utf8"), process.cwd(), options);
+      text = await readStdin();
     } else {
       const path = resolve(name);
       if (!existsSync(path)) fail(`ファイルがありません: ${name}`);
       if (statSync(path).isDirectory()) fail(`ディレクトリは指定できません: ${name}`);
-      const text = await readFile(path, "utf8");
-      await processDocument(text, dirname(path), options);
+      text = await readFile(path, "utf8");
     }
+
+    if (options.section !== null) {
+      const section = extractSection(text, options.section);
+      if (section === null) {
+        fail(`セクション ${options.section} が見つかりません（--toc で一覧を表示できます）`);
+      }
+      text = section;
+    }
+
+    if (usePager) (sink as BufferSink).expectHeadings(listHeadings(text));
+    await processDocument(text, baseDir, options, ctx);
+  }
+
+  if (usePager) {
+    const buffer = sink as BufferSink;
+    await runPager(buffer.blocks, buffer.marks, {
+      rows: rows >= 5 ? rows : 24,
+      columns: (process.stdout.columns ?? 0) >= 20 ? (process.stdout.columns as number) : 100,
+    });
   }
 }
 

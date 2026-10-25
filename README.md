@@ -35,6 +35,8 @@ Mermaid はコードブロックのまま流れてしまいます。
 - **表示サイズを自動補正** — `CSI 16t` / `CSI 14t` で端末のセルサイズ・ウィンドウサイズを実測し、
   HiDPI（150% / 200% スケーリング）でも指定した桁数ぴったりに表示
 - **自動フォールバック** — プロトコルが使えない端末では半ブロック描画（描画できない記法はコードブロック）
+- **長い文書のためのナビゲーション** — `-p`（画像も使えるページャ。前後移動・見出し一覧・
+  セクションジャンプ）/ `--toc`（見出し一覧）/ `--section N`（節だけ表示）
 - **キャッシュ** — 図・画像は `~/.cache/mdview/` に保存され、2 回目以降は即表示
 - **TypeScript / ESM** — Node.js LTS だけで動作。Python は不要
 
@@ -112,6 +114,9 @@ mdview README.md                      # 表示
 cat README.md | mdview                # 標準入力
 mdview -w 100 -i 100 doc.md           # テキスト100桁 / 画像100桁
 mdview -r blocks doc.md               # Sixel を使わず半ブロックで描画
+mdview -p doc.md                      # 1 ページずつ（space/Enter で次へ, q で終了）
+mdview --toc doc.md                   # 見出しの一覧
+mdview --section 3 doc.md             # 3 番目の見出しのセクションだけ
 mdview --check                        # 端末の対応状況を表示
 mdview --refresh doc.md               # 端末判定をやり直す
 ```
@@ -131,6 +136,9 @@ mdview --refresh doc.md               # 端末判定をやり直す
 | `--mermaid-theme auto\|default\|dark\|neutral` | Mermaid の配色 |
 | `--mermaid-width N` | Mermaid のラスタライズ幅 px（既定: 2048） |
 | `-c, --no-colour` | 色・画像を無効化（生の Markdown に近い表示） |
+| `-p, --paginate` | ページャで表示（前後移動・見出し一覧・ジャンプ。画像もそのまま出ます） |
+| `--toc` | 見出しの一覧を表示して終了（`--section` の番号が分かります） |
+| `--section N` | N 番目の見出しのセクションだけを表示 |
 | `--check` | 端末・依存の対応状況を表示して終了 |
 | `--check-update` | 新しいバージョンがあるか確認 |
 | `--update` | 最新バージョンへ自己アップデート |
@@ -138,6 +146,33 @@ mdview --refresh doc.md               # 端末判定をやり直す
 環境変数: `MDVIEW_KITTY=0|1` / `MDVIEW_SIXEL=0|1`（プロトコルの強制）、
 `MDVIEW_CELL=18x36`（セルサイズ上書き）、`MDVIEW_CACHE`（キャッシュ先）、
 `MDVIEW_MDCAT`（mdcat のパス）。
+
+### 長い文書を読む
+
+```bash
+mdview --toc README.md          #   1  mdview
+                                #   2    対応端末
+                                #   3    必要なもの ...
+mdview --section 2 README.md    # 「対応端末」だけを表示
+mdview -p README.md             # ページ送り（画像も表示される）
+```
+
+`less` などのページャは画像のエスケープ列を解釈しないため、画像を含む文書では
+`mdview -p`（内蔵ページャ）を使ってください。
+
+ページャのキー操作:
+
+| キー | 動作 |
+|---|---|
+| `space` / `Enter` / `j` / `↓` | 次のページ |
+| `b` / `k` / `↑` | 前のページ |
+| `]` / `[` | 次の見出し / 前の見出しへジャンプ |
+| `t` | 見出し一覧（`j`/`k` で選択、`Enter` でジャンプ、`t`/`Esc` で戻る） |
+| `g` / `G` | 先頭 / 末尾 |
+| `q` / `Esc` / Ctrl-C | 終了 |
+
+ステータス行には現在のページ番号と、その位置のセクション名が出ます。
+画面はオルタネートスクリーンを使うので、終了すると元の画面に戻ります。
 
 ## 動作のしくみ
 
