@@ -26,6 +26,7 @@ import {
 } from "./images.js";
 import { extractImages, extractMermaid, splitSegments, type ImageBlock, type MermaidBlock } from "./markdown.js";
 import { mermaidToPng, type MermaidTheme } from "./mermaid.js";
+import { extractTables, renderTable } from "./tables.js";
 import { mermaidCacheDir, remoteCacheDir, shortHash } from "./paths.js";
 import { encodeSixel } from "./sixel.js";
 import { encodeIterm2, detectIterm2 } from "./iterm.js";
@@ -434,11 +435,20 @@ async function drawImage(
 async function processDocument(text: string, baseDir: string, options: Options): Promise<void> {
   const mermaid = extractMermaid(text);
   const images = extractImages(mermaid.text, mermaid.blocks.length);
+  const tables = extractTables(images.text);
   const assets: (MermaidBlock | ImageBlock)[] = [...mermaid.blocks, ...images.blocks];
 
-  for (const segment of splitSegments(images.text)) {
+  for (const segment of splitSegments(tables.text)) {
     if (segment.kind === "text") {
       runMdcat(segment.body, options);
+      continue;
+    }
+    if (segment.kind === "table") {
+      const table = tables.tables[segment.index];
+      if (table) {
+        writeOut(renderTable(table, { maxWidth: options.width, colour: !options.noColour }));
+        writeOut("\n");
+      }
       continue;
     }
     const asset = assets[segment.index];

@@ -10,10 +10,12 @@ export interface ImageBlock {
 
 export type Segment =
   | { kind: "text"; body: string }
-  | { kind: "asset"; index: number };
+  | { kind: "asset"; index: number }
+  | { kind: "table"; index: number };
 
 const SENTINEL = (index: number): string => `@@mdview-image-${index}-@@`;
 const SENTINEL_RE = /^@@mdview-image-(\d+)-@@[ \t]*$/;
+const TABLE_SENTINEL_RE = /^@@mdview-table-(\d+)-@@[ \t]*$/;
 const IMAGE_RE = /!\[([^\]]*)\]\(\s*<?([^)>\s]+)>?(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/;
 const FENCE_RE = /^([ \t]*)(`{3,}|~{3,})[ \t]*mermaid\b(.*)$/;
 
@@ -81,13 +83,19 @@ export function splitSegments(text: string): Segment[] {
   };
 
   for (const line of text.split("\n")) {
-    const match = SENTINEL_RE.exec(line);
-    if (match?.[1] !== undefined) {
+    const asset = SENTINEL_RE.exec(line);
+    if (asset?.[1] !== undefined) {
       flush();
-      segments.push({ kind: "asset", index: Number(match[1]) });
-    } else {
-      buffer.push(line);
+      segments.push({ kind: "asset", index: Number(asset[1]) });
+      continue;
     }
+    const table = TABLE_SENTINEL_RE.exec(line);
+    if (table?.[1] !== undefined) {
+      flush();
+      segments.push({ kind: "table", index: Number(table[1]) });
+      continue;
+    }
+    buffer.push(line);
   }
   flush();
 
