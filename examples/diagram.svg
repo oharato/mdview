@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="170" viewBox="0 0 520 170">
+  <rect x="8" y="8" width="504" height="154" rx="18" fill="#262626" stroke="#7aa2f7" stroke-width="2"/>
+  <circle cx="76" cy="85" r="38" fill="#7aa2f7" opacity="0.9"/>
+  <path d="M76 46 L112 104 L40 104 Z" fill="#0c0c0c" opacity="0.55"/>
+  <text x="140" y="78" font-family="sans-serif" font-size="28" fill="#d6d6d6">SVG も描画できます</text>
+  <text x="140" y="112" font-family="sans-serif" font-size="18" fill="#9a9a9a">resvg でラスタライズ（透過も保持）</text>
+</svg>

@@ -105,6 +105,7 @@ mdview --update         # 自分自身を更新
 ## 使い方
 
 ```bash
+mdview examples/demo.md               # 同梱のデモ（テキスト・表・Mermaid・PNG・SVG）
 mdview README.md                      # 表示
 cat README.md | mdview                # 標準入力
 mdview -w 100 -i 100 doc.md           # テキスト100桁 / 画像100桁
