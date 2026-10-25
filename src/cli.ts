@@ -5,8 +5,6 @@ import {
   existsSync,
   mkdirSync,
   openSync,
-  readdirSync,
-  readFileSync,
   statSync,
   writeFileSync,
   writeSync,
@@ -42,12 +40,11 @@ import {
   windowPixels,
 } from "./term.js";
 
-const VERSION = "0.3.4";
+const VERSION = "0.4.0";
 const DIM = "\x1b[2m";
 const RESET = "\x1b[0m";
 
 type Renderer = "auto" | "kitty" | "sixel" | "iterm" | "blocks";
-type MermaidEngine = "auto" | "pele" | "mmdc";
 type ThemeSetting = "auto" | MermaidTheme;
 
 interface Options {
@@ -62,10 +59,8 @@ interface Options {
   upscale: boolean;
   light: boolean;
   noColour: boolean;
-  mermaidEngine: MermaidEngine;
   mermaidTheme: ThemeSetting;
   mermaidWidth: number;
-  mermaidTimeout: number;
   check: boolean;
   refresh: boolean;
 }
@@ -86,10 +81,8 @@ const HELP = `mdview ${VERSION} — mdcat + 端末内画像/Mermaid 描画
       --[no-]upscale        小さい画像を端末幅まで拡大 (既定: 有効, 最大3倍)
       --light               明るい背景の端末として扱う
   -c, --no-colour           色・画像を無効化
-      --mermaid-engine E    auto | pele | mmdc (既定: auto)
       --mermaid-theme T     auto | default | dark | neutral
       --mermaid-width N     Mermaid のラスタライズ幅 px (既定: 2048)
-      --mermaid-timeout S   Mermaid のタイムアウト秒 (既定: 90)
       --check               端末・依存の対応状況を表示して終了
       --refresh             端末判定をやり直す
   -V, --version             バージョン表示
@@ -157,10 +150,8 @@ function parseOptions(argv: string[]): Options {
         "no-upscale": { type: "boolean" },
         light: { type: "boolean" },
         "no-colour": { type: "boolean", short: "c" },
-        "mermaid-engine": { type: "string" },
         "mermaid-theme": { type: "string" },
         "mermaid-width": { type: "string" },
-        "mermaid-timeout": { type: "string" },
         check: { type: "boolean" },
         refresh: { type: "boolean" },
         version: { type: "boolean", short: "V" },
@@ -200,7 +191,6 @@ function parseOptions(argv: string[]): Options {
 
   const renderer = pick(v.renderer, ["auto", "kitty", "sixel", "iterm", "blocks"] as const, "auto");
   const colorMode = pick(v.colours, ["truecolor", "256"] as const, "truecolor");
-  const mermaidEngine = pick(v["mermaid-engine"], ["auto", "pele", "mmdc"] as const, "auto");
   const mermaidTheme = pick(
     v["mermaid-theme"],
     ["auto", "default", "dark", "neutral"] as const,
@@ -221,10 +211,8 @@ function parseOptions(argv: string[]): Options {
     upscale,
     light: v.light ?? detectLightBackground(),
     noColour: v["no-colour"] ?? false,
-    mermaidEngine,
     mermaidTheme,
     mermaidWidth: num(v["mermaid-width"], 2048),
-    mermaidTimeout: float(v["mermaid-timeout"], 90) * 1000,
     check: v.check ?? false,
     refresh: v.refresh ?? false,
   };
@@ -264,69 +252,12 @@ async function renderMermaid(block: MermaidBlock, options: Options): Promise<voi
       writeFileSync(cachePath, png);
     } catch (error) {
       warn(`Mermaid を描画できません: ${(error as Error).message}`);
-      if (options.mermaidEngine !== "mmdc") {
-        runMdcat("```mermaid\n" + block.code + "```\n", options);
-        return;
-      }
-      await renderWithMmdc(block, options, cachePath);
+      runMdcat("```mermaid\n" + block.code + "```\n", options);
+      return;
     }
   }
 
   if (existsSync(cachePath)) await showImage(cachePath, "mermaid", options);
-}
-
-/** mermaid-cli 用の Chrome を探す（任意のフォールバック）。 */
-function findChrome(): string | null {
-  const fromEnv = process.env.PUPPETEER_EXECUTABLE_PATH;
-  if (fromEnv && existsSync(fromEnv)) return fromEnv;
-  const cache = resolve(process.env.HOME ?? "~", ".cache", "puppeteer");
-  if (existsSync(cache)) {
-    const candidates = [
-      resolve(cache, "chrome-headless-shell"),
-      resolve(cache, "chrome"),
-    ];
-    for (const base of candidates) {
-      try {
-        for (const entry of readdirSync(base)) {
-          for (const bin of ["chrome-headless-shell-linux64/chrome-headless-shell", "chrome-linux64/chrome"]) {
-            const candidate = resolve(base, entry, bin);
-            if (existsSync(candidate)) return candidate;
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-  for (const name of ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]) {
-    const found = spawnSync("which", [name], { encoding: "utf8" });
-    const path = found.stdout?.trim();
-    if (path) return path;
-  }
-  return null;
-}
-
-async function renderWithMmdc(
-  block: MermaidBlock,
-  options: Options,
-  cachePath: string,
-): Promise<void> {
-  const dir = dirname(cachePath);
-  const source = resolve(dir, `${shortHash(block.code)}.mmd`);
-  writeFileSync(source, block.code);
-  const env = { ...process.env };
-  const chrome = findChrome();
-  if (chrome && !env.PUPPETEER_EXECUTABLE_PATH) env.PUPPETEER_EXECUTABLE_PATH = chrome;
-  const result = spawnSync(
-    "mmdc",
-    ["-i", source, "-o", cachePath, "-t", "dark", "-b", "transparent", "-s", "3"],
-    { encoding: "utf8", timeout: options.mermaidTimeout, env },
-  );
-  if (result.error || result.status !== 0 || !existsSync(cachePath)) {
-    const detail = (result.stderr ?? "").trim().split("\n").at(-1) ?? "unknown error";
-    warn(`Mermaid のレンダリングに失敗: ${detail}`);
-    runMdcat("```mermaid\n" + block.code + "```\n", options);
-  }
 }
 
 async function resolveImageSource(src: string, baseDir: string): Promise<string | null> {
@@ -514,10 +445,6 @@ function commandVersion(command: string): string | null {
   return line || "found";
 }
 
-function commandExists(command: string): boolean {
-  return spawnSync("which", [command], { encoding: "utf8" }).status === 0;
-}
-
 /** セルフテストの結果を文字列にする。 */
 async function kittyTransferStatus(): Promise<string> {
   const probe = await probeTerminal();
@@ -542,7 +469,6 @@ async function printCheck(options: Options): Promise<void> {
     ["mdcat", commandVersion(mdcat) ?? "見つかりません"],
     ["pele", "built-in"],
     ["resvg", "built-in (@resvg/resvg-js)"],
-    ["mmdc", commandExists("mmdc") ? (commandVersion("mmdc") ?? "found") : "未インストール (任意)"],
     ["TERM", process.env.TERM ?? ""],
     ["terminal", (await terminalName()) || "不明 (XTVERSION 未応答)"],
     ["columns", String(columns)],

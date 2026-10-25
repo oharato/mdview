@@ -8,6 +8,8 @@ iTerm2（iTerm2 / VSCode）のいずれかでフル解像度に描画し、
 Mermaid は [Pele](https://github.com/obsidianmd/pele) でレンダリングするため、
 Chrome / Puppeteer は不要です。
 
+[![CI](https://github.com/oharato/mdview/actions/workflows/ci.yml/badge.svg)](https://github.com/oharato/mdview/actions/workflows/ci.yml)
+
 ![出力例](docs/diagram.png)
 
 ## なぜ必要か
@@ -30,7 +32,7 @@ Mermaid はコードブロックのまま流れてしまいます。
   外部の画像ビューア不要（`img2sixel` / `chafa` / `kitten icat` などは不要）
 - **表示サイズを自動補正** — `CSI 16t` / `CSI 14t` で端末のセルサイズ・ウィンドウサイズを実測し、
   HiDPI（150% / 200% スケーリング）でも指定した桁数ぴったりに表示
-- **自動フォールバック** — 非対応端末では半ブロック描画、Pele が無ければ mermaid-cli（任意）
+- **自動フォールバック** — プロトコルが使えない端末では半ブロック描画（描画できない記法はコードブロック）
 - **キャッシュ** — 図・画像は `~/.cache/mdview/` に保存され、2 回目以降は即表示
 - **TypeScript / ESM** — Node.js LTS だけで動作。Python は不要
 
@@ -59,7 +61,6 @@ Mermaid はコードブロックのまま流れてしまいます。
 | [@resvg/resvg-js](https://www.npmjs.com/package/@resvg/resvg-js) | SVG → PNG | 同梱（依存関係） |
 | [sharp](https://sharp.pixelplumbing.com/) | 画像のデコード・リサイズ | 同梱（依存関係） |
 | pnpm 10+ | インストール / ビルド | 必須 |
-| [mermaid-cli](https://github.com/mermaid-js/mermaid-cli) | Pele が使えないときの代替 | 任意 |
 
 ## インストール
 
@@ -107,7 +108,6 @@ mdview --refresh doc.md               # 端末判定をやり直す
 | `--pixel-scale F` | セルサイズを取得できない端末での倍率（HiDPI なら 2） |
 | `--upscale / --no-upscale` | 小さい画像を端末幅まで拡大（既定: 有効・最大 3 倍） |
 | `--light` | 明るい背景の端末として扱う（Mermaid のテーマ・画像背景） |
-| `--mermaid-engine auto\|pele\|mmdc` | Mermaid の描画エンジン（既定: Pele） |
 | `--mermaid-theme auto\|default\|dark\|neutral` | Mermaid の配色 |
 | `--mermaid-width N` | Mermaid のラスタライズ幅 px（既定: 2048） |
 | `-c, --no-colour` | 色・画像を無効化（生の Markdown に近い表示） |

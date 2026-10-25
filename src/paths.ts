@@ -9,10 +9,6 @@ export function mermaidCacheDir(): string {
   return join(CACHE_DIR, "mermaid");
 }
 
-export function svgCacheDir(): string {
-  return join(CACHE_DIR, "svg");
-}
-
 export function remoteCacheDir(): string {
   return join(CACHE_DIR, "remote");
 }

@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { basename, extname } from "node:path";
+import { extname } from "node:path";
 import { Resvg } from "@resvg/resvg-js";
 import sharp from "sharp";
 import type { RgbaImage } from "./sixel.js";
@@ -95,10 +94,6 @@ export function isSvg(path: string): boolean {
   return extname(path).toLowerCase() === ".svg";
 }
 
-export function imageLabel(path: string): string {
-  return basename(path);
-}
-
 export interface SixelSizing {
   imageWidthCols: number;
   pixelScale: number;
@@ -139,6 +134,3 @@ export function parseBackground(value: string, light: boolean): Rgb | null {
   return [(num >> 16) & 0xff, (num >> 8) & 0xff, num & 0xff];
 }
 
-export function fileExists(path: string): boolean {
-  return existsSync(path);
-}
