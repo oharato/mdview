@@ -145,8 +145,9 @@ mdview -r blocks .    # 画像プロトコルを使わず半ブロックで描�
 | 行 | 意味 |
 |---|---|
 | `terminal` | XTVERSION で識別した端末名（例: `wezterm` / `windows terminal`） |
-| `kitty support` | 端末が kitty graphics のクエリに応答したか |
+| `kitty support` | 端末が kitty graphics のクエリに応答したか（`no response` は無応答） |
 | `kitty transfer` | 実際に（複数チャンクの）画像データを送って応答があったか |
+| `kitty usable` | 上記を踏まえて kitty を採用できるか |
 | `sixel support` | DA1 の Sixel 属性 |
 | `renderer` | 実際に採用されたプロトコル |
 
@@ -163,6 +164,7 @@ wezterm ssh oharato@192.168.242.100
 ```
 
 この場合 mdview は自動で半ブロック描画にフォールバックし、警告を 1 行表示します。
+OSC 1337（iTerm2 方式）が通るかは `mdview -r iterm <file>` で試せます。
 
 **WezTerm の Sixel 誤広告について**
 

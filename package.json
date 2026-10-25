@@ -1,6 +1,6 @@
 {
   "name": "mdview",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "mdcat + inline images and Mermaid in the terminal (Sixel / half-blocks, no Chrome)",
   "repository": {
     "type": "git",

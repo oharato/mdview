@@ -41,7 +41,7 @@ import {
   windowPixels,
 } from "./term.js";
 
-const VERSION = "0.3.1";
+const VERSION = "0.3.2";
 const DIM = "\x1b[2m";
 const RESET = "\x1b[0m";
 
@@ -379,7 +379,7 @@ async function chooseRenderer(options: Options): Promise<Exclude<Renderer, "auto
   if (await kittySupported()) return "kitty";
 
   const probe = await probeTerminal();
-  if (probe.kitty === true && probe.kittyTransfer === false && !warnedKittyTransfer) {
+  if (!options.check && probe.kitty === true && probe.kittyTransfer === false && !warnedKittyTransfer) {
     warnedKittyTransfer = true;
     warn(
       "kitty graphics の画像転送に失敗しました（Windows の ssh.exe / ConPTY 経由では画像が描画されないことがあります）。" +
@@ -499,7 +499,7 @@ function commandExists(command: string): boolean {
 /** セルフテストの結果を文字列にする。 */
 async function kittyTransferStatus(): Promise<string> {
   const probe = await probeTerminal();
-  if (probe.kitty !== true) return "n/a (kitty 非対応)";
+  if (probe.kitty !== true) return "n/a (kitty 未対応)";
   if (probe.kittyTransfer === true) return "ok";
   if (probe.kittyTransfer === false) return "失敗 (画像データが届かない)";
   return "未検証";
@@ -508,6 +508,7 @@ async function kittyTransferStatus(): Promise<string> {
 async function printCheck(options: Options): Promise<void> {
   const sixel = await sixelSupported(options.refresh);
   const kitty = await kittySupported();
+  const probe = await probeTerminal();
   const [cellWidth, cellHeight] = await cellPixels();
   const window = await windowPixels();
   const renderer = await chooseRenderer(options);
@@ -526,8 +527,9 @@ async function printCheck(options: Options): Promise<void> {
     ["cell pixels", `${cellWidth}x${cellHeight}`],
     ["window pixels", window ? `${window[0]}x${window[1]}` : "不明"],
     ["interactive", String(isInteractive())],
-    ["kitty support", kitty ? "yes" : "no"],
+    ["kitty support", probe.kitty === null ? "no response" : probe.kitty ? "yes" : "no"],
     ["kitty transfer", await kittyTransferStatus()],
+    ["kitty usable", kitty ? "yes" : "no"],
     ["sixel support", sixel ? "yes" : "no"],
     ["iterm2 support", detectIterm2() ? "yes" : "no"],
     ["renderer", renderer],
@@ -535,6 +537,17 @@ async function printCheck(options: Options): Promise<void> {
   ];
   for (const [label, value] of lines) {
     writeOut(`${label.padEnd(14)}: ${value}\n`);
+  }
+
+  if (probe.kitty === true && probe.kittyTransfer === false) {
+    writeOut(
+      "\n" +
+        "hint: 端末は kitty graphics を話しますが、画像データ（大きい APC）が届いていません。\n" +
+        "      Windows の WezTerm を ssh.exe (ConPTY) 経由で使っている場合はこれが原因です。\n" +
+        "      - wezterm ssh <user>@<host>  で接続し直す（推奨・ConPTY を迂回）\n" +
+        "      - mdview -r iterm <file>     で OSC 1337 経由が通るか試す\n" +
+        "      - mdview -r blocks <file>    半ブロックで表示（現状のフォールバック）\n",
+    );
   }
 }
 
