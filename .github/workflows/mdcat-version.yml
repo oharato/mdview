@@ -36,37 +36,35 @@ jobs:
 
           title="mdcat ${latest} が公開されています"
           existing=$(gh issue list --state open --limit 100 --json number,title \
-            --jq ".[] | select(.title == \"$title\") | .number")
+            --jq ".[] | select(.title == \"${title}\") | .number")
 
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "最新は \`${latest}\` です（ピン留め: \`${pinned}\`）。"
             exit 0
           fi
 
-          body=$(cat <<EOF
-ピン留めしているバージョンと最新リリースに差があります。
+          {
+            echo "ピン留めしているバージョンと最新リリースに差があります。"
+            echo
+            echo "| | バージョン |"
+            echo "|---|---|"
+            echo "| \`mdcat.version\`（ピン留め） | \`${pinned}\` |"
+            echo "| 最新リリース | \`${latest}\` |"
+            echo
+            echo "## 更新手順"
+            echo
+            echo '```bash'
+            echo "echo \"${latest}\" > mdcat.version"
+            echo "MDCAT_VERSION=${latest} MDCAT_FORCE=1 ./install.sh"
+            echo "pnpm test && pnpm typecheck"
+            echo "mdview --check"
+            echo '```'
+            echo
+            echo "- [ ] \`mdcat.version\` を ${latest} に更新"
+            echo "- [ ] install.sh で導入して動作確認（--ansi / --columns の互換性）"
+            echo "- [ ] README の「必要なもの」を更新"
+            echo
+            echo "リリースノート: https://github.com/swsnr/mdcat/releases/tag/mdcat-${latest}"
+          } > /tmp/issue-body.md
 
-| | バージョン |
-|---|---|
-| \`mdcat.version\`（ピン留め） | \`${pinned}\` |
-| 最新リリース | \`${latest}\` |
-
-## 更新手順
-
-\`\`\`bash
-echo "${latest}" > mdcat.version
-MDCAT_VERSION=${latest} MDCAT_FORCE=1 ./install.sh
-pnpm test && pnpm typecheck
-mdview --check          # mdcat の行が ${latest} になることを確認
-\`\`\`
-
-- [ ] \`mdcat.version\` を ${latest} に更新
-- [ ] install.sh で導入して動作確認（\`--ansi\` / \`--columns\` の互換性）
-- [ ] README の「必要なもの」を更新
-
-### リリースノート
-https://github.com/swsnr/mdcat/releases/tag/mdcat-${latest}
-EOF
-          )
-
-          gh issue create --title "$title" --body "$body"
+          gh issue create --title "$title" --body-file /tmp/issue-body.md
