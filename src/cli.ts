@@ -30,6 +30,7 @@ import { mermaidCacheDir, remoteCacheDir, shortHash } from "./paths.js";
 import { encodeSixel } from "./sixel.js";
 import { encodeIterm2, detectIterm2 } from "./iterm.js";
 import { encodeKitty } from "./kitty.js";
+import { checkForUpdate, currentVersion, describeInstall, runSelfUpdate } from "./update.js";
 import {
   cellPixels,
   isInteractive,
@@ -41,7 +42,7 @@ import {
   windowPixels,
 } from "./term.js";
 
-const VERSION = "0.4.0";
+const VERSION = currentVersion();
 const DIM = "\x1b[2m";
 const RESET = "\x1b[0m";
 
@@ -64,6 +65,8 @@ interface Options {
   mermaidWidth: number;
   check: boolean;
   refresh: boolean;
+  update: boolean;
+  checkUpdate: boolean;
 }
 
 const HELP = `mdview ${VERSION} — mdcat + 端末内画像/Mermaid 描画
@@ -86,6 +89,8 @@ const HELP = `mdview ${VERSION} — mdcat + 端末内画像/Mermaid 描画
       --mermaid-width N     Mermaid のラスタライズ幅 px (既定: 2048)
       --check               端末・依存の対応状況を表示して終了
       --refresh             端末判定をやり直す
+      --check-update        新しいバージョンがあるか確認
+      --update              最新バージョンへ自己アップデート
   -V, --version             バージョン表示
   -h, --help                このヘルプ
 
@@ -155,6 +160,8 @@ function parseOptions(argv: string[]): Options {
         "mermaid-width": { type: "string" },
         check: { type: "boolean" },
         refresh: { type: "boolean" },
+        "check-update": { type: "boolean" },
+        update: { type: "boolean" },
         version: { type: "boolean", short: "V" },
         help: { type: "boolean", short: "h" },
       },
@@ -216,6 +223,8 @@ function parseOptions(argv: string[]): Options {
     mermaidWidth: num(v["mermaid-width"], 2048),
     check: v.check ?? false,
     refresh: v.refresh ?? false,
+    update: v.update ?? false,
+    checkUpdate: v["check-update"] ?? false,
   };
 }
 
@@ -522,6 +531,27 @@ async function printCheck(options: Options): Promise<void> {
 
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2));
+
+  if (options.checkUpdate) {
+    const { current, latest, hasUpdate, install } = await checkForUpdate();
+    writeOut(`mdview        : ${current}\n`);
+    writeOut(`install       : ${describeInstall(install)}\n`);
+    if (!latest) {
+      writeOut("latest        : 取得できませんでした（リリース未作成、またはネットワーク）\n");
+      return;
+    }
+    writeOut(`latest        : ${latest.version}\n`);
+    writeOut(`status        : ${hasUpdate ? "更新があります" : "最新です"}\n`);
+    if (hasUpdate) writeOut(`\n  mdview --update  で更新できます (${latest.url})\n`);
+    return;
+  }
+
+  if (options.update) {
+    const result = await runSelfUpdate();
+    writeOut(`${result.ok ? "" : "mdview: "}${result.message}\n`);
+    if (!result.ok) process.exit(1);
+    return;
+  }
 
   if (options.check) {
     await printCheck(options);

@@ -85,6 +85,23 @@ cd mdview
 pnpm add -g github:oharato/mdview   # prepare でビルドされます
 ```
 
+## アップデート
+
+```bash
+mdview --check-update   # 最新リリースとの比較（インストール方法も表示）
+mdview --update         # 自分自身を更新
+```
+
+`--update` はインストール方法を自動判定して実行します。
+
+| インストール方法 | 実行内容 |
+|---|---|
+| `git clone` + `install.sh`（symlink） | `git pull --ff-only` → `pnpm install --frozen-lockfile` → `pnpm build` |
+| `pnpm add -g` / `npm i -g` | `pnpm add -g github:oharato/mdview#v<最新>`（npm の場合は `npm i -g`） |
+| 判定できない場合 | 手動手順を表示 |
+
+バージョンは [GitHub のリリース](https://github.com/oharato/mdview/releases) を参照します。
+
 ## 使い方
 
 ```bash
@@ -112,6 +129,8 @@ mdview --refresh doc.md               # 端末判定をやり直す
 | `--mermaid-width N` | Mermaid のラスタライズ幅 px（既定: 2048） |
 | `-c, --no-colour` | 色・画像を無効化（生の Markdown に近い表示） |
 | `--check` | 端末・依存の対応状況を表示して終了 |
+| `--check-update` | 新しいバージョンがあるか確認 |
+| `--update` | 最新バージョンへ自己アップデート |
 
 環境変数: `MDVIEW_KITTY=0|1` / `MDVIEW_SIXEL=0|1`（プロトコルの強制）、
 `MDVIEW_CELL=18x36`（セルサイズ上書き）、`MDVIEW_CACHE`（キャッシュ先）、
