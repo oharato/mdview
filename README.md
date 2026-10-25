@@ -2,7 +2,8 @@
 
 `mdcat` の書式をそのままに、**画像と Mermaid を端末内に描画する** Markdown ビューアです。
 
-Sixel 対応の端末（Windows Terminal 1.22+ / WezTerm / xterm など）ではフル解像度で、
+Kitty graphics（WezTerm / kitty / Ghostty / Herdr）・Sixel（Windows Terminal 1.22+）・
+iTerm2（iTerm2 / VSCode）のいずれかでフル解像度に描画し、
 非対応の端末では ANSI トゥルーカラーの半ブロック（`▀`）で描画します。
 Mermaid は [Pele](https://github.com/obsidianmd/pele) でレンダリングするため、
 Chrome / Puppeteer は不要です。
@@ -25,12 +26,28 @@ Mermaid はコードブロックのまま流れてしまいます。
 
 - **mdcat 互換のテキスト表示** — シンタックスハイライト、リンク、見出し記号などは mdcat のまま
 - **Mermaid を内蔵レンダリング** — Pele（ゼロ DOM）+ resvg。1 図あたり 0.1〜0.2 秒、Chrome 不要
-- **Sixel を自前実装** — 外部の画像ビューア不要（`img2sixel` / `chafa` などは不要）
+- **画像プロトコルを自前実装** — Kitty graphics / Sixel / iTerm2 を内蔵。
+  外部の画像ビューア不要（`img2sixel` / `chafa` / `kitten icat` などは不要）
 - **表示サイズを自動補正** — `CSI 16t` / `CSI 14t` で端末のセルサイズ・ウィンドウサイズを実測し、
   HiDPI（150% / 200% スケーリング）でも指定した桁数ぴったりに表示
 - **自動フォールバック** — 非対応端末では半ブロック描画、Pele が無ければ mermaid-cli（任意）
 - **キャッシュ** — 図・画像は `~/.cache/mdview/` に保存され、2 回目以降は即表示
 - **TypeScript / ESM** — Node.js LTS だけで動作。Python は不要
+
+## 対応端末
+
+| 端末 | 使用するプロトコル |
+|---|---|
+| WezTerm / kitty / Ghostty | Kitty graphics |
+| Herdr（内側のペイン） | Kitty graphics（`kitty_graphics = true`、最近のバージョンは既定で有効） |
+| Windows Terminal 1.22+ / xterm（Sixel 対応ビルド） | Sixel |
+| iTerm2 | iTerm2 inline images |
+| VSCode 1.80+ の統合ターミナル | iTerm2 inline images |
+| その他 | ANSI 半ブロック（`▀`、低解像度） |
+
+判定順は **Kitty graphics → Sixel → iTerm2 → 半ブロック** で、
+`mdview --check` で実際の判定結果を確認できます。手動で固定する場合は
+`-r kitty|sixel|iterm|blocks`、環境変数 `MDVIEW_KITTY=0|1` / `MDVIEW_SIXEL=0|1` を使います。
 
 ## 必要なもの
 
@@ -84,7 +101,7 @@ mdview --refresh doc.md               # 端末判定をやり直す
 |---|---|
 | `-w, --width N` | テキストの最大桁数（既定: 端末幅、最大 120） |
 | `-i, --image-width N` | 画像・図の横幅（端末桁数、既定: 端末幅いっぱい） |
-| `-r, --renderer auto\|sixel\|blocks` | 描画方式（既定: 端末を自動判定） |
+| `-r, --renderer auto\|kitty\|sixel\|iterm\|blocks` | 描画方式（既定: 端末を自動判定） |
 | `--image-colours N` | Sixel の色数（既定: 256） |
 | `--image-bg auto\|none\|#RRGGBB` | 透過画像の背景（既定: 端末に合わせる） |
 | `--pixel-scale F` | セルサイズを取得できない端末での倍率（HiDPI なら 2） |
@@ -96,20 +113,34 @@ mdview --refresh doc.md               # 端末判定をやり直す
 | `-c, --no-colour` | 色・画像を無効化（生の Markdown に近い表示） |
 | `--check` | 端末・依存の対応状況を表示して終了 |
 
-環境変数: `MDVIEW_SIXEL=0|1`（Sixel の強制）、`MDVIEW_CELL=18x36`（セルサイズ上書き）、
-`MDVIEW_CACHE`（キャッシュ先）、`MDVIEW_MDCAT`（mdcat のパス）。
+環境変数: `MDVIEW_KITTY=0|1` / `MDVIEW_SIXEL=0|1`（プロトコルの強制）、
+`MDVIEW_CELL=18x36`（セルサイズ上書き）、`MDVIEW_CACHE`（キャッシュ先）、
+`MDVIEW_MDCAT`（mdcat のパス）。
 
 ## 動作のしくみ
 
-1. **端末プローブ** — DA1（`ESC [ c`）で Sixel 対応を、`CSI 16 t` / `CSI 14 t` で
-   セルサイズ・ウィンドウサイズ（実ピクセル）を取得。判定結果は `~/.cache/mdview/caps.json` に保存。
+1. **端末プローブ** — DA1（`ESC [ c`）で Sixel 対応を、Kitty のクエリ
+   （`ESC _ G i=31 ; a=q,t=d,f=24 ; AAAA ESC \`）で Kitty graphics 対応を、
+   `CSI 16 t` / `CSI 14 t` でセルサイズ・ウィンドウサイズ（実ピクセル）を 1 回の問い合わせで取得。
+   Sixel の判定結果は `~/.cache/mdview/caps.json` に保存。
 2. **Markdown の分解** — ```` ```mermaid ```` フェンスと `![](...)` をプレースホルダに置換し、
    テキスト部分だけ `mdcat --ansi` に渡す。
 3. **Mermaid** — Pele が出力する SVG は CSS 変数で配色されるため、変数を実色へ解決してから
    resvg でラスタライズ（resvg は `var()` 非対応）。ダイアグラムは内容のハッシュでキャッシュ。
-4. **Sixel エンコード** — メディアンカットで減色し、6 ピクセルバンド + `!<n><char>` の
-   ランレングス圧縮で出力。1 図あたり数十 KB。
+4. **画像の送出** — Kitty graphics は PNG を 4096 文字ずつ分割送出（`C=1` でカーソルを
+   動かさず自前で改行）、Sixel はメディアンカット減色 + 6 ピクセルバンド + `!<n><char>` の
+   ランレングス圧縮。iTerm2 は `ESC ]1337;File=inline=1`。
 5. **半ブロック描画** — Sixel 非対応端末では `▀` と 24bit カラーで描画（`--colours 256` で 256 色）。
+
+### トラブルシュート
+
+```bash
+mdview --check        # 端末・依存・採用プロトコルを表示
+mdview --refresh .    # 端末判定をやり直す（キャッシュを無視）
+```
+
+画像が粗い（半ブロックになっている）場合は `--check` の `kitty support` / `sixel support` が
+`no` になっています。`-r kitty` などで強制するか、多重化ツールのパススルー設定を確認してください。
 
 ### 開発
 
@@ -122,8 +153,11 @@ pnpm build
 
 ## 制限
 
-- Sixel は **Windows Terminal 1.22 以降**で利用できます。tmux / screen 経由では
-  パススルー設定がない限り表示されません（その場合は自動で半ブロックになります）。
+- Sixel は **Windows Terminal 1.22 以降**で利用できます。
+- tmux / screen 経由では、パススルー設定（`set -g allow-passthrough on` など）が無い限り
+  画像プロトコルは通りません。その場合は半ブロック描画になります。
+- Herdr は Kitty graphics を解釈して外側の端末へ転送します。`terminal.kitty_graphics = false`
+  にしている場合は半ブロックになります。
 - `less` などのページャと併用すると画像は出ません（mdcat 単体と同じ制約）。
 - 半ブロック描画は 1 セル 2 ピクセル相当のため、文字を含む複雑な図は粗くなります。
   Sixel 対応端末での利用を推奨します。

@@ -33,6 +33,13 @@ export async function rasterFromBuffer(buf: Buffer): Promise<RgbaImage> {
   return { width: info.width, height: info.height, data };
 }
 
+/** PNG バッファに変換する（Kitty / iTerm2 プロトコル用）。 */
+export async function toPng(img: RgbaImage, compressionLevel = 9): Promise<Buffer> {
+  return await sharp(img.data, { raw: { width: img.width, height: img.height, channels: 4 } })
+    .png({ compressionLevel, adaptiveFiltering: true })
+    .toBuffer();
+}
+
 /** 指定サイズへ（アスペクト比は呼び出し側で合わせる）。 */
 export async function resizeImage(img: RgbaImage, width: number, height: number): Promise<RgbaImage> {
   const w = Math.max(1, Math.round(width));
@@ -100,7 +107,7 @@ export interface SixelSizing {
 }
 
 /** Sixel で表示する (幅px, 高さpx) を端末の実ピクセルから決める。 */
-export async function planSixelSize(
+export async function planDisplaySize(
   width: number,
   height: number,
   sizing: SixelSizing,

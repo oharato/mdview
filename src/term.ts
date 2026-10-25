@@ -10,19 +10,22 @@ import {
   writeSync,
 } from "node:fs";
 import { join } from "node:path";
+import { KITTY_QUERY, parseKittyResponse } from "./kitty.js";
 import { CACHE_DIR, sleepSync } from "./paths.js";
 
 /** DA1 / XTWINOPS の問い合わせ結果。 */
 export interface ProbeResult {
   /** Sixel 描画に対応しているか（null = 判定不能）。 */
   sixel: boolean | null;
+  /** Kitty graphics protocol に対応しているか（null = 判定不能）。 */
+  kitty: boolean | null;
   /** 文字セルの実ピクセルサイズ [幅, 高さ]。 */
   cell: [number, number] | null;
   /** 端末ウィンドウの実ピクセルサイズ [幅, 高さ]。 */
   window: [number, number] | null;
 }
 
-const QUERY = "\x1b[c\x1b[16t\x1b[14t";
+const QUERY = "\x1b[c\x1b[16t\x1b[14t" + KITTY_QUERY;
 const DA1_RE = /\x1b\[\?([0-9;]+)c/;
 const CELL_RE = /\x1b\[6;(\d+);(\d+)t/;
 const WINDOW_RE = /\x1b\[4;(\d+);(\d+)t/;
@@ -36,7 +39,7 @@ export function isInteractive(): boolean {
 }
 
 function parseProbe(raw: string): ProbeResult {
-  const result: ProbeResult = { sixel: null, cell: null, window: null };
+  const result: ProbeResult = { sixel: null, kitty: parseKittyResponse(raw), cell: null, window: null };
   const da1 = DA1_RE.exec(raw);
   if (da1?.[1]) {
     result.sixel = da1[1].split(";").includes("4");
@@ -57,7 +60,7 @@ function parseProbe(raw: string): ProbeResult {
 }
 
 function isComplete(raw: string): boolean {
-  return DA1_RE.test(raw) && CELL_RE.test(raw) && WINDOW_RE.test(raw);
+  return DA1_RE.test(raw) && CELL_RE.test(raw) && WINDOW_RE.test(raw) && raw.includes("_G");
 }
 
 /** stdin が TTY のときの問い合わせ（raw モード + data イベント）。 */
@@ -143,7 +146,7 @@ function queryViaDevTty(): string {
 export async function probeTerminal(): Promise<ProbeResult> {
   probePromise ??= (async () => {
     if (!isInteractive()) {
-      return { sixel: null, cell: null, window: null };
+      return { sixel: null, kitty: null, cell: null, window: null };
     }
     const raw = process.stdin.isTTY ? await queryViaStdin() : queryViaDevTty();
     return parseProbe(raw);
@@ -190,6 +193,25 @@ export async function sixelSupported(refresh = false): Promise<boolean> {
   cache[key] = probe.sixel;
   writeCapsCache(cache);
   return probe.sixel;
+}
+
+/**
+ * Kitty graphics protocol が使えるか。
+ * 端末へ問い合わせ、応答が無い場合は環境変数から推定する。
+ */
+export async function kittySupported(): Promise<boolean> {
+  const override = process.env.MDVIEW_KITTY;
+  if (override !== undefined && override !== "") {
+    return !["0", "false", "no"].includes(override.toLowerCase());
+  }
+  const probe = await probeTerminal();
+  if (probe.kitty !== null) return probe.kitty;
+
+  // クエリに応答しない端末向けのフォールバック
+  if (process.env.KITTY_WINDOW_ID) return true;
+  if ((process.env.TERM ?? "").includes("kitty")) return true;
+  const program = (process.env.TERM_PROGRAM ?? "").toLowerCase();
+  return program === "wezterm" || program === "ghostty" || program === "mintty";
 }
 
 /** 文字セルの実ピクセルサイズ（`MDVIEW_CELL=18x36` で上書き可）。 */

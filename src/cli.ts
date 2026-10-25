@@ -21,21 +21,29 @@ import {
   loadRaster,
   loadSvg,
   parseBackground,
-  planSixelSize,
+  planDisplaySize,
   resizeImage,
-  rasterFromBuffer,
+  toPng,
 } from "./images.js";
 import { extractImages, extractMermaid, splitSegments, type ImageBlock, type MermaidBlock } from "./markdown.js";
 import { mermaidToPng, type MermaidTheme } from "./mermaid.js";
 import { mermaidCacheDir, remoteCacheDir, shortHash } from "./paths.js";
 import { encodeSixel } from "./sixel.js";
-import { cellPixels, isInteractive, sixelSupported, windowPixels } from "./term.js";
+import { encodeIterm2, detectIterm2 } from "./iterm.js";
+import { encodeKitty } from "./kitty.js";
+import {
+  cellPixels,
+  isInteractive,
+  kittySupported,
+  sixelSupported,
+  windowPixels,
+} from "./term.js";
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 const DIM = "\x1b[2m";
 const RESET = "\x1b[0m";
 
-type Renderer = "auto" | "sixel" | "blocks";
+type Renderer = "auto" | "kitty" | "sixel" | "iterm" | "blocks";
 type MermaidEngine = "auto" | "pele" | "mmdc";
 type ThemeSetting = "auto" | MermaidTheme;
 
@@ -67,7 +75,7 @@ const HELP = `mdview ${VERSION} — mdcat + 端末内画像/Mermaid 描画
 オプション:
   -w, --width N             テキストの最大桁数 (既定: 端末幅, 最大 120)
   -i, --image-width N       画像・図の横幅 (端末桁数, 既定: 端末幅いっぱい)
-  -r, --renderer MODE       auto | sixel | blocks (既定: auto)
+  -r, --renderer MODE       auto | kitty | sixel | iterm | blocks (既定: auto)
       --colours MODE        blocks 描画時の色数: truecolor | 256
       --image-colours N     sixel 描画時の色数 (既定: 256)
       --image-bg SPEC       透過画像の背景: auto | none | #RRGGBB
@@ -187,7 +195,7 @@ function parseOptions(argv: string[]): Options {
     fail(`不正な値です: ${raw} (${allowed.join(" | ")})`);
   };
 
-  const renderer = pick(v.renderer, ["auto", "sixel", "blocks"] as const, "auto");
+  const renderer = pick(v.renderer, ["auto", "kitty", "sixel", "iterm", "blocks"] as const, "auto");
   const colorMode = pick(v.colours, ["truecolor", "256"] as const, "truecolor");
   const mermaidEngine = pick(v["mermaid-engine"], ["auto", "pele", "mmdc"] as const, "auto");
   const mermaidTheme = pick(
@@ -352,9 +360,12 @@ async function renderImage(block: ImageBlock, baseDir: string, options: Options)
   await showImage(source, block.alt, options);
 }
 
-async function chooseRenderer(options: Options): Promise<"sixel" | "blocks"> {
+async function chooseRenderer(options: Options): Promise<Exclude<Renderer, "auto">> {
   if (options.renderer !== "auto") return options.renderer;
-  return (await sixelSupported()) ? "sixel" : "blocks";
+  if (await kittySupported()) return "kitty";
+  if (await sixelSupported()) return "sixel";
+  if (detectIterm2()) return "iterm";
+  return "blocks";
 }
 
 async function showImage(path: string, alt: string, options: Options): Promise<void> {
@@ -391,17 +402,34 @@ async function drawImage(
   if (background) image = await flattenImage(image, background);
 
   const renderer = await chooseRenderer(options);
-  if (renderer === "sixel") {
+  if (renderer === "sixel" || renderer === "kitty" || renderer === "iterm") {
     const { rows } = getStdoutSize();
-    const [width, height] = await planSixelSize(image.width, image.height, {
+    const [width, height] = await planDisplaySize(image.width, image.height, {
       imageWidthCols: options.imageWidth,
       pixelScale: options.pixelScale,
       upscale: options.upscale,
       terminalRows: rows,
     });
     const resized = await resizeImage(image, width, height);
-    writeOut(encodeSixel(resized, options.imageColors));
-    writeOut("\n");
+
+    if (renderer === "sixel") {
+      writeOut(encodeSixel(resized, options.imageColors));
+      writeOut("\n");
+      return;
+    }
+
+    const png = await toPng(resized);
+    if (renderer === "kitty") {
+      const [cellWidth, cellHeight] = await cellPixels();
+      const cols = Math.max(1, Math.round(resized.width / cellWidth));
+      const placementRows = Math.max(1, Math.ceil(resized.height / cellHeight));
+      writeOut(encodeKitty(png, { cols, rows: placementRows }));
+      // C=1（カーソルを動かさない）で送っているので、こちらで行を進める
+      writeOut("\n".repeat(placementRows));
+      return;
+    }
+
+    writeOut(encodeIterm2(png));
     return;
   }
 
@@ -441,6 +469,7 @@ function commandExists(command: string): boolean {
 
 async function printCheck(options: Options): Promise<void> {
   const sixel = await sixelSupported(options.refresh);
+  const kitty = await kittySupported();
   const [cellWidth, cellHeight] = await cellPixels();
   const window = await windowPixels();
   const renderer = await chooseRenderer(options);
@@ -458,7 +487,9 @@ async function printCheck(options: Options): Promise<void> {
     ["cell pixels", `${cellWidth}x${cellHeight}`],
     ["window pixels", window ? `${window[0]}x${window[1]}` : "不明"],
     ["interactive", String(isInteractive())],
+    ["kitty support", kitty ? "yes" : "no"],
     ["sixel support", sixel ? "yes" : "no"],
+    ["iterm2 support", detectIterm2() ? "yes" : "no"],
     ["renderer", renderer],
     ["image width", `${options.imageWidth} cols`],
   ];
