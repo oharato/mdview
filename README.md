@@ -30,15 +30,18 @@ Mermaid はコードブロックのまま流れてしまいます。
   HiDPI（150% / 200% スケーリング）でも指定した桁数ぴったりに表示
 - **自動フォールバック** — 非対応端末では半ブロック描画、Pele が無ければ mermaid-cli（任意）
 - **キャッシュ** — 図・画像は `~/.cache/mdview/` に保存され、2 回目以降は即表示
+- **TypeScript / ESM** — Node.js LTS だけで動作。Python は不要
 
 ## 必要なもの
 
 | 依存 | 用途 | 必須 |
 |---|---|---|
-| Python 3.9+ / [Pillow](https://pypi.org/project/pillow/) | 画像処理・Sixel エンコード・半ブロック描画 | 必須 |
+| [Node.js](https://nodejs.org/) 22.12+（LTS） | 実行環境 | 必須 |
 | [mdcat](https://github.com/swsnr/mdcat) | Markdown のテキスト描画 | 必須 |
-| [Node.js](https://nodejs.org/) + [Pele](https://www.npmjs.com/package/pele) | Mermaid の SVG 化 | Mermaid を使う場合 |
-| [resvg](https://github.com/linebender/resvg) | SVG → PNG | Mermaid / SVG 画像を使う場合 |
+| [pele](https://www.npmjs.com/package/pele) | Mermaid の SVG 化 | 同梱（依存関係） |
+| [@resvg/resvg-js](https://www.npmjs.com/package/@resvg/resvg-js) | SVG → PNG | 同梱（依存関係） |
+| [sharp](https://sharp.pixelplumbing.com/) | 画像のデコード・リサイズ | 同梱（依存関係） |
+| pnpm 10+ | インストール / ビルド | 必須 |
 | [mermaid-cli](https://github.com/mermaid-js/mermaid-cli) | Pele が使えないときの代替 | 任意 |
 
 ## インストール
@@ -51,20 +54,18 @@ cd mdview
 
 `install.sh` は次を行います。
 
-- `mdcat` / `resvg` が無ければ GitHub Releases から `~/.local/bin` に取得
-- `pele/` で `npm install`（Pele 本体）
-- `mdview` を `~/.local/bin/mdview` にシンボリックリンク
+- Node.js / pnpm の確認（pnpm は corepack で有効化を試みます）
+- `mdcat` が無ければ GitHub Releases から `~/.local/bin` に取得
+- `pnpm install` → `pnpm build`（TypeScript → `dist/`）
+- `~/.local/bin/mdview` から `dist/cli.js` へシンボリックリンク
 
 インストール先を変えたい場合は `BIN_DIR=~/bin ./install.sh` のように指定してください。
 
-### 手動セットアップ
+### pnpm のグローバルインストール
 
 ```bash
-npm --prefix pele install        # Pele
-ln -sf "$PWD/mdview" ~/.local/bin/mdview
+pnpm add -g github:oharato/mdview   # prepare でビルドされます
 ```
-
-Pillow は `sudo apt install python3-pil` もしくは `pip install pillow` で導入できます。
 
 ## 使い方
 
@@ -96,7 +97,7 @@ mdview --refresh doc.md               # 端末判定をやり直す
 | `--check` | 端末・依存の対応状況を表示して終了 |
 
 環境変数: `MDVIEW_SIXEL=0|1`（Sixel の強制）、`MDVIEW_CELL=18x36`（セルサイズ上書き）、
-`MDVIEW_RESVG`、`MDVIEW_PELE`、`MDVIEW_CACHE`。
+`MDVIEW_CACHE`（キャッシュ先）、`MDVIEW_MDCAT`（mdcat のパス）。
 
 ## 動作のしくみ
 
@@ -106,9 +107,18 @@ mdview --refresh doc.md               # 端末判定をやり直す
    テキスト部分だけ `mdcat --ansi` に渡す。
 3. **Mermaid** — Pele が出力する SVG は CSS 変数で配色されるため、変数を実色へ解決してから
    resvg でラスタライズ（resvg は `var()` 非対応）。ダイアグラムは内容のハッシュでキャッシュ。
-4. **Sixel エンコード** — Pillow で減色（median cut）し、6 ピクセルバンド + `!<n><char>` の
+4. **Sixel エンコード** — メディアンカットで減色し、6 ピクセルバンド + `!<n><char>` の
    ランレングス圧縮で出力。1 図あたり数十 KB。
 5. **半ブロック描画** — Sixel 非対応端末では `▀` と 24bit カラーで描画（`--colours 256` で 256 色）。
+
+### 開発
+
+```bash
+pnpm install
+pnpm test        # vitest（Sixel エンコーダ / Markdown 分解 / テーマ解決）
+pnpm typecheck
+pnpm build
+```
 
 ## 制限
 

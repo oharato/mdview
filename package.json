@@ -1,0 +1,42 @@
+{
+  "name": "mdview",
+  "version": "0.2.0",
+  "description": "mdcat + inline images and Mermaid in the terminal (Sixel / half-blocks, no Chrome)",
+  "type": "module",
+  "bin": {
+    "mdview": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "packageManager": "pnpm@12.13.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "start": "node dist/cli.js",
+    "prepare": "pnpm build"
+  },
+  "keywords": [
+    "markdown",
+    "mdcat",
+    "mermaid",
+    "sixel",
+    "terminal",
+    "cli"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "pele": "^1.10.0",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

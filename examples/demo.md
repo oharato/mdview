@@ -17,7 +17,8 @@ flowchart LR
 
 ## コード
 
-```python
-def hello(name: str) -> str:
-    return f"こんにちは, {name}!"
+```typescript
+export function hello(name: string): string {
+  return `こんにちは, ${name}!`;
+}
 ```
