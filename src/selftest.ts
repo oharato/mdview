@@ -80,16 +80,27 @@ export function kittySelfTestSequence(): string {
     const more = index === chunks.length - 1 ? 0 : 1;
     const control =
       index === 0
-        ? `a=t,f=100,i=${KITTY_TEST_ID},I=${KITTY_TEST_ID},q=0,m=${more}`
+        ? `a=t,f=100,I=${KITTY_TEST_ID},q=0,m=${more}`
         : `m=${more}`;
     parts.push(`\x1b_G${control};${chunk}\x1b\\`);
   });
-  // テスト用画像を後始末する
-  parts.push(`\x1b_Ga=d,d=i,i=${KITTY_TEST_ID},q=2\x1b\\`);
+  // テスト用画像を後始末する（画像番号 I= で削除。i= は使わない）
+  parts.push(`\x1b_Ga=d,d=n,I=${KITTY_TEST_ID},q=2\x1b\\`);
   return parts.join("");
 }
 
-/** セルフテストの応答（`_G...;OK` にテスト ID が含まれる）を判定する。 */
+/**
+ * セルフテストの応答を判定する。
+ *
+ * WezTerm は `i=` と `I=` の同時指定を不正として扱うため、テストでは
+ * 画像番号 (`I=`) のみを使う。応答は `_GI=<no>,i=<id>;OK` または `_GI=<no>;OK`。
+ */
 export function parseKittySelfTest(raw: string): boolean {
-  return new RegExp(`_G[^;]*${KITTY_TEST_ID}[^;]*;OK`).test(raw);
+  // 応答は端末ごとに異なる（`_GI=<no>,i=<id>;OK` / `_Gi=<id>;OK` / `_G;OK`）。
+  // クエリ（`i=31`）の応答だけを除外して、それ以外の OK を自己テスト成功とみなす。
+  const okResponses = [...raw.matchAll(/_G([^;]*);OK/g)];
+  return okResponses.some((match) => {
+    const control = match[1] ?? "";
+    return !/(?:^|,)i=31(?:,|$)/.test(control);
+  });
 }

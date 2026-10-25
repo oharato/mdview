@@ -34,6 +34,7 @@ import { encodeKitty } from "./kitty.js";
 import {
   cellPixels,
   isInteractive,
+  isWezTerm,
   kittySupported,
   probeTerminal,
   sixelSupported,
@@ -41,7 +42,7 @@ import {
   windowPixels,
 } from "./term.js";
 
-const VERSION = "0.3.2";
+const VERSION = "0.3.3";
 const DIM = "\x1b[2m";
 const RESET = "\x1b[0m";
 
@@ -362,28 +363,37 @@ async function renderImage(block: ImageBlock, baseDir: string, options: Options)
   await showImage(source, block.alt, options);
 }
 
-/**
- * 端末が WezTerm か。WezTerm は DA1 で Sixel 対応 (属性 4) を返すが実装していないため、
- * XTVERSION (`CSI > 0 q`) の応答で識別して Sixel を使わない。
- * 参考: https://github.com/wezterm/wezterm/issues/8070
- */
-async function isWezTerm(): Promise<boolean> {
-  if ((process.env.TERM_PROGRAM ?? "").toLowerCase() === "wezterm") return true;
-  return (await terminalName()) === "wezterm";
-}
-
 let warnedKittyTransfer = false;
+
+/**
+ * Kitty の画像 ID。
+ * 省略すると WezTerm は ID 0 を使い回すため、複数画像が後勝ちで置き換わる。
+ * 出現ごとに一意な ID を払い出す。
+ */
+let kittyImageId = 1000 + Math.floor(Math.random() * 100_000);
+
+function nextKittyImageId(): number {
+  kittyImageId += 1;
+  if (kittyImageId > 0xfffffffe) kittyImageId = 1001;
+  return kittyImageId;
+}
 
 async function chooseRenderer(options: Options): Promise<Exclude<Renderer, "auto">> {
   if (options.renderer !== "auto") return options.renderer;
   if (await kittySupported()) return "kitty";
 
   const probe = await probeTerminal();
-  if (!options.check && probe.kitty === true && probe.kittyTransfer === false && !warnedKittyTransfer) {
+  if (
+    !options.check &&
+    probe.kitty === true &&
+    probe.kittyTransfer === false &&
+    (await isWezTerm()) &&
+    !warnedKittyTransfer
+  ) {
     warnedKittyTransfer = true;
     warn(
-      "kitty graphics の画像転送に失敗しました（Windows の ssh.exe / ConPTY 経由では画像が描画されないことがあります）。" +
-        "`wezterm ssh` での接続か、-r blocks をお試しください",
+      "kitty graphics の画像転送を確認できませんでした（-r blocks で半ブロック表示になります）。" +
+        "接続経路によっては描画されないことがあります: wezterm ssh / -r iterm もお試しください",
     );
   }
 
@@ -452,7 +462,9 @@ async function drawImage(
       const [cellWidth, cellHeight] = await cellPixels();
       const cols = Math.max(1, Math.round(resized.width / cellWidth));
       const placementRows = Math.max(1, Math.ceil(resized.height / cellHeight));
-      writeOut(encodeKitty(png, { cols, rows: placementRows }));
+      writeOut(
+        encodeKitty(png, { cols, rows: placementRows, imageId: nextKittyImageId() }),
+      );
       // C=1（カーソルを動かさない）で送っているので、こちらで行を進める
       writeOut("\n".repeat(placementRows));
       return;
@@ -539,13 +551,12 @@ async function printCheck(options: Options): Promise<void> {
     writeOut(`${label.padEnd(14)}: ${value}\n`);
   }
 
-  if (probe.kitty === true && probe.kittyTransfer === false) {
+  if (probe.kitty === true && probe.kittyTransfer === false && (await isWezTerm())) {
     writeOut(
       "\n" +
-        "hint: 端末は kitty graphics を話しますが、画像データ（大きい APC）が届いていません。\n" +
-        "      Windows の WezTerm を ssh.exe (ConPTY) 経由で使っている場合はこれが原因です。\n" +
-        "      - wezterm ssh <user>@<host>  で接続し直す（推奨・ConPTY を迂回）\n" +
-        "      - mdview -r iterm <file>     で OSC 1337 経由が通るか試す\n" +
+        "hint: 端末は kitty graphics を話しますが、画像データの転送を確認できませんでした。\n" +
+        "      - wezterm ssh <user>@<host>  で接続し直す（ConPTY を迂回）\n" +
+        "      - mdview -r iterm <file>     OSC 1337 経由を試す\n" +
         "      - mdview -r blocks <file>    半ブロックで表示（現状のフォールバック）\n",
     );
   }

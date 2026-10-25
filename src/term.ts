@@ -231,6 +231,12 @@ export async function sixelSupported(refresh = false): Promise<boolean> {
   return probe.sixel;
 }
 
+/** WezTerm か（TERM_PROGRAM または XTVERSION から判定）。 */
+export async function isWezTerm(): Promise<boolean> {
+  if ((process.env.TERM_PROGRAM ?? "").toLowerCase() === "wezterm") return true;
+  return (await terminalName()) === "wezterm";
+}
+
 /** XTVERSION で識別した端末名（小文字）。判定できなければ空文字。 */
 export async function terminalName(): Promise<string> {
   const probe = await probeTerminal();
@@ -247,7 +253,13 @@ export async function kittySupported(): Promise<boolean> {
     return !["0", "false", "no"].includes(override.toLowerCase());
   }
   const probe = await probeTerminal();
-  if (probe.kitty === true) return probe.kittyTransfer !== false;
+  if (probe.kitty === true) {
+    // WezTerm は「クエリには応答するが画像データは描画されない」経路
+    // （Windows + ssh.exe/ConPTY など）があるため、転送テストを必須にする。
+    // 他の端末は応答形式が多様なので、クエリ応答を優先する。
+    if (await isWezTerm()) return probe.kittyTransfer === true;
+    return true;
+  }
 
   // クエリに応答しない端末向けのフォールバック
   if (process.env.KITTY_WINDOW_ID) return true;

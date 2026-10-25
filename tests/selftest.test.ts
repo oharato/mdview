@@ -17,7 +17,9 @@ describe("kittySelfTestSequence", () => {
     expect(cmds.length).toBeGreaterThanOrEqual(3); // 2 チャンク + delete
     expect(cmds[0]!.control).toContain("a=t");
     expect(cmds[0]!.control).toContain("f=100");
-    expect(cmds[0]!.control).toContain(`i=${KITTY_TEST_ID}`);
+    expect(cmds[0]!.control).toContain(`I=${KITTY_TEST_ID}`);
+    // WezTerm は i= と I= の同時指定を拒否する
+    expect(cmds[0]!.control).not.toContain("i=");
     expect(cmds[0]!.control).toContain("m=1");
   });
 
@@ -31,19 +33,24 @@ describe("kittySelfTestSequence", () => {
   it("最後にテスト画像を削除する", () => {
     const last = cmds.at(-1)!;
     expect(last.control).toContain("a=d");
-    expect(last.control).toContain(`i=${KITTY_TEST_ID}`);
+    expect(last.control).toContain("d=n");
+    expect(last.control).toContain(`I=${KITTY_TEST_ID}`);
   });
 });
 
 describe("parseKittySelfTest", () => {
   it("WezTerm 形式（I=, i=）の OK を検出する", () => {
-    expect(parseKittySelfTest(`\x1b_GI=${KITTY_TEST_ID},i=${KITTY_TEST_ID};OK\x1b\\`)).toBe(true);
+    expect(parseKittySelfTest(`\x1b_GI=${KITTY_TEST_ID},i=4242;OK\x1b\\`)).toBe(true);
   });
   it("kitty 形式（i= のみ）の OK を検出する", () => {
-    expect(parseKittySelfTest(`\x1b_Gi=${KITTY_TEST_ID};OK\x1b\\`)).toBe(true);
+    expect(parseKittySelfTest("\x1b_Gi=4242;OK\x1b\\")).toBe(true);
   });
-  it("クエリ応答 (i=31) とは区別する", () => {
+  it("クエリ応答 (i=31) だけなら false", () => {
     expect(parseKittySelfTest("\x1b_Gi=31;OK\x1b\\")).toBe(false);
+  });
+  it("クエリ応答とテスト応答が混在していれば true", () => {
+    const raw = `\x1b_Gi=31;OK\x1b\\\x1b_GI=${KITTY_TEST_ID},i=4242;OK\x1b\\`;
+    expect(parseKittySelfTest(raw)).toBe(true);
   });
   it("応答が無ければ false", () => {
     expect(parseKittySelfTest("")).toBe(false);
