@@ -123,6 +123,26 @@ export async function planDisplaySize(
   return [Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale))];
 }
 
+export type ImageRendererKind = "kitty" | "sixel" | "iterm" | "blocks";
+
+/**
+ * 透過画像をどう扱うか。
+ * - kitty / iTerm2 / 半ブロックはアルファを保持（端末の背景が透ける）
+ * - Sixel はアルファを持てないため背景色に合成する
+ */
+export function resolveBackground(
+  value: string,
+  light: boolean,
+  renderer: ImageRendererKind,
+): Rgb | null {
+  if (value === "none") return null;
+  if (value === "auto") {
+    if (renderer === "sixel") return light ? [255, 255, 255] : [12, 12, 12];
+    return null;
+  }
+  return parseBackground(value, light);
+}
+
 /** `auto|none|#RRGGBB` を解釈する。auto は明暗どちらの端末かを考慮する。 */
 export function parseBackground(value: string, light: boolean): Rgb | null {
   if (value === "none") return null;

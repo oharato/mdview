@@ -19,8 +19,8 @@ import {
   isSvg,
   loadRaster,
   loadSvg,
-  parseBackground,
   planDisplaySize,
+  resolveBackground,
   resizeImage,
   toPng,
 } from "./images.js";
@@ -408,10 +408,9 @@ async function drawImage(
   options: Options,
   ctx: RenderContext,
 ): Promise<void> {
-  const background = parseBackground(options.imageBg, options.light);
-  if (background) image = await flattenImage(image, background);
-
   const renderer = await chooseRenderer(options);
+  const background = resolveBackground(options.imageBg, options.light, renderer);
+  if (background) image = await flattenImage(image, background);
   if (renderer === "sixel" || renderer === "kitty" || renderer === "iterm") {
     const { rows } = getStdoutSize();
     const [width, height] = await planDisplaySize(image.width, image.height, {

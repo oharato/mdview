@@ -32,6 +32,8 @@ Mermaid はコードブロックのまま流れてしまいます。
 - **Mermaid を内蔵レンダリング** — Pele（ゼロ DOM）+ resvg。1 図あたり 0.1〜0.2 秒、Chrome 不要
 - **画像プロトコルを自前実装** — Kitty graphics / Sixel / iTerm2 を内蔵。
   外部の画像ビューア不要（`img2sixel` / `chafa` / `kitten icat` などは不要）
+- **透過を保持** — Kitty / iTerm2 / 半ブロックでは透過 PNG・SVG が端末の背景に溶け込む
+  （Sixel は仕様上アルファを持てないため `--image-bg` の色に合成）
 - **表示サイズを自動補正** — `CSI 16t` / `CSI 14t` で端末のセルサイズ・ウィンドウサイズを実測し、
   HiDPI（150% / 200% スケーリング）でも指定した桁数ぴったりに表示
 - **自動フォールバック** — プロトコルが使えない端末では半ブロック描画（描画できない記法はコードブロック）
@@ -129,7 +131,7 @@ mdview --refresh doc.md               # 端末判定をやり直す
 | `-i, --image-width N` | 画像・図の横幅（端末桁数、既定: 端末幅いっぱい） |
 | `-r, --renderer auto\|kitty\|sixel\|iterm\|blocks` | 描画方式（既定: 端末を自動判定） |
 | `--image-colours N` | Sixel の色数（既定: 256） |
-| `--image-bg auto\|none\|#RRGGBB` | 透過画像の背景（既定: 端末に合わせる） |
+| `--image-bg auto\|none\|#RRGGBB` | 透過画像の扱い。`auto` はアルファ対応方式（Kitty/iTerm2/半ブロック）なら透過を保持し、Sixel は背景色に合成 |
 | `--pixel-scale F` | セルサイズを取得できない端末での倍率（HiDPI なら 2） |
 | `--upscale / --no-upscale` | 小さい画像を端末幅まで拡大（既定: 有効・最大 3 倍） |
 | `--light` | 明るい背景の端末として扱う（Mermaid のテーマ・画像背景） |
