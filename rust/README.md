@@ -218,6 +218,39 @@ diff -u /tmp/mdcat.txt /tmp/rs.txt
 `mdview --update` はこの asset をダウンロードし、`SHA256SUMS` を検証して
 実行中のバイナリを置き換えます。
 
+## Herdr 経由で画像が出ないとき
+
+Herdr のペイン内で `mdview --check` が `kitty support: yes` / `kitty transfer: ok` /
+`renderer: kitty` になっているのに画像が出ない場合、mdview は Herdr に Kitty graphics を
+正しく渡しています。Herdr は受け取った画像を**外側の端末向けに raw RGBA (`f=32`) へ
+再エンコード**して転送するため、次のどれかが原因です。
+
+1. **Herdr の client / server 両方で `kitty_graphics` が有効になっていない**
+   - 新しい設定: `[terminal] kitty_graphics = true`
+   - 旧設定: `[experimental] kitty_graphics = true`
+   - リモートセッションでは **server 側がパース**、**local client 側が外側端末への出力**を
+     制御します。両方に設定し、Herdr server / client を再起動または再接続してください。
+2. **外側の端末が Herdr の raw RGBA 出力に対応していない**
+   - Windows Terminal / VSCode の統合ターミナルなど、Kitty graphics 自体に対応しない端末では
+     Herdr 経由の画像は表示できません。その場合は Herdr を使わず、Sixel 対応の端末で
+     直接 `mdview` を実行してください。
+3. **Herdr のバージョンが古い**
+   - `herdr --version` と `herdr config check` を確認してください。
+
+切り分け:
+
+```bash
+# Herdr 内で別の Kitty 画像ツールが表示できるか
+kitten icat examples/sample.png   # kitty
+chafa --format kitty examples/sample.png
+
+# mdview 側のフォールバック（画像プロトコルを使わない）
+mdview -r blocks examples/demo.md
+```
+
+`kitten icat` / `chafa` も表示できない場合は mdview ではなく Herdr と外側端末の経路の問題です。
+Herdr の設定を変えた後は `herdr server stop` → `herdr` で再起動してください。
+
 ## 既知の制限・Node 版との違い
 
 - **Mermaid の見た目**: `mermaid-rs-renderer 0.3.1` は開発初期の Pure Rust 実装です。

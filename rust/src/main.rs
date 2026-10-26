@@ -363,7 +363,7 @@ fn print_check(options: &Options) {
     let renderer = choose_renderer(options);
     let (columns, _) = term::terminal_size();
 
-    let lines: [(String, String); 17] = [
+    let lines: [(String, String); 18] = [
         ("mdview".into(), update::current_version().into()),
         ("rust".into(), "built-in (no Node/Python runtime)".into()),
         (
@@ -408,11 +408,28 @@ fn print_check(options: &Options) {
         ("sixel support".into(), yes_no(sixel)),
         ("iterm2 support".into(), yes_no(iterm::detect_iterm2())),
         ("renderer".into(), renderer_name(renderer).to_string()),
+        (
+            "herdr".into(),
+            if std::env::var_os("HERDR_ENV").is_some() {
+                "yes (HERDR_ENV=1)".into()
+            } else {
+                "no".into()
+            },
+        ),
     ];
     for (label, value) in &lines {
         println!("{:<14}: {}", label, value);
     }
     println!("{:<14}: {} cols", "image width", options.image_width);
+
+    if std::env::var_os("HERDR_ENV").is_some() && renderer == Renderer::Kitty {
+        println!(
+            "\nhint: Herdr 経由の Kitty graphics は Herdr が外側端末向けに再エンコードします。\n\
+             \x20     画像が出ない場合は Herdr の client / server 両方で kitty_graphics を有効にし、\n\
+             \x20     [terminal] kitty_graphics = true（旧: [experimental] kitty_graphics = true）を\n\
+             \x20     確認してください。切り分けには mdview -r blocks が使えます。"
+        );
+    }
 
     if probe.kitty == Some(true) && probe.kitty_transfer == Some(false) && term::is_wez_term() {
         println!(

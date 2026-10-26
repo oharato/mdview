@@ -319,7 +319,9 @@ pnpm build
   画像プロトコルは通りません。その場合は半ブロック描画になります。
 - Herdr は Kitty graphics を解釈して外側の端末へ転送します。`terminal.kitty_graphics = false`
   にしている場合は半ブロックになります。外側の接続経路（ConPTY など）が画像を壊す場合は
-  Herdr 経由でも表示されません。
+  Herdr 経由でも表示されません。Herdr は画像を raw RGBA (`f=32`) に再エンコードするため、
+  Herdr の client / server 両方の `kitty_graphics` 設定と、外側端末の Kitty graphics 対応を
+  確認してください（詳細は [`rust/README.md`](rust/README.md#herdr-経由で画像が出ないとき)）。
 - `less` などのページャと併用すると画像は出ません（mdcat 単体と同じ制約）。
 - 半ブロック描画は 1 セル 2 ピクセル相当のため、文字を含む複雑な図は粗くなります。
   Sixel 対応端末での利用を推奨します。
