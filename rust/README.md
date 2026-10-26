@@ -240,13 +240,23 @@ Herdr のペイン内で `mdview --check` が `kitty support: yes` / `kitty tran
 切り分け:
 
 ```bash
+# まず画像 1 枚だけの短い文書で確認
+printf '# test\n\n![](examples/sample.png)\n' > /tmp/herdr-test.md
+mdview /tmp/herdr-test.md
+
 # Herdr 内で別の Kitty 画像ツールが表示できるか
 kitten icat examples/sample.png   # kitty
 chafa --format kitty examples/sample.png
 
+# 長い文書でスクロール後に消える場合はページャを使う
+mdview -p examples/demo.md
+
 # mdview 側のフォールバック（画像プロトコルを使わない）
 mdview -r blocks examples/demo.md
 ```
+
+短い文書では表示され、長い文書のスクロールバックで消える場合は、Herdr の
+表示範囲の問題です。`mdview -p` を使うと画像を含むページをその場で表示できます。
 
 `kitten icat` / `chafa` も表示できない場合は mdview ではなく Herdr と外側端末の経路の問題です。
 Herdr の設定を変えた後は `herdr server stop` → `herdr` で再起動してください。
