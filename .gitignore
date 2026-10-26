@@ -7,3 +7,7 @@ coverage/
 # OS / エディタ
 .DS_Store
 *.swp
+
+# Rust
+rust/target/
+rust/out/

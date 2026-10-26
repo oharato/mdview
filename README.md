@@ -10,6 +10,18 @@ Chrome / Puppeteer は不要です。
 
 [![CI](https://github.com/oharato/mdview/actions/workflows/ci.yml/badge.svg)](https://github.com/oharato/mdview/actions/workflows/ci.yml)
 
+> **Rust 単体バイナリ版（Linux）を追加しました**
+>
+> `rust/` に Node.js・npm・sharp/libvips・外部 mdcat を必要としない実装があります。
+> Mermaid は Pure Rust の `mermaid-rs-renderer`、画像は `image` + `resvg` を使用し、
+> 約 12MB の単体バイナリになります（Linux x86_64 / aarch64）。
+> ビルド・使い方・既知の制限は [`rust/README.md`](rust/README.md) を参照してください。
+>
+> ```bash
+> cd rust && cargo build --release
+> ./target/release/mdview examples/demo.md
+> ```
+
 ![出力例](docs/diagram.png)
 
 ## なぜ必要か
@@ -90,6 +102,21 @@ cd mdview
 ```bash
 pnpm add -g github:oharato/mdview   # prepare でビルドされます
 ```
+
+## Rust 単体バイナリ版（Linux）
+
+Node.js を使わない実装を `rust/` に追加しています。詳細は [`rust/README.md`](rust/README.md) を参照してください。
+
+```bash
+cd rust
+cargo build --release
+./target/release/mdview --check
+./target/release/mdview -p ../README.md
+```
+
+テキスト描画は `pulldown-cmark-mdcat`（mdcat 本体のレンダラ）を使うため、mdcat と
+同じ書式になります。Mermaid は `mermaid-rs-renderer`（Pure Rust）で描画します。
+以降の「アップデート」「使い方」は従来の Node.js 実装の説明です。
 
 ## アップデート
 

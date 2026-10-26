@@ -48,3 +48,24 @@ updates:
       actions:
         patterns:
           - "*"
+
+  # Rust (rust/ の単体バイナリ実装)
+  - package-ecosystem: cargo
+    directory: "/rust"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(rust-deps)"
+    ignore:
+      # 2.10 以降は別メンテナのフォーク。公式 2.9.0 に固定する。
+      - dependency-name: "pulldown-cmark-mdcat"
+    groups:
+      rust-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
