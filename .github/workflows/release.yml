@@ -12,7 +12,9 @@ permissions:
 jobs:
   build:
     name: build (${{ matrix.target }})
-    runs-on: ubuntu-latest
+    # Use the oldest practical runner so the binary does not require a
+    # brand-new glibc (ubuntu-latest may be Ubuntu 26 / glibc 2.43).
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:

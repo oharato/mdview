@@ -1,6 +1,6 @@
 [package]
 name = "mdview"
-version = "0.7.0"
+version = "0.7.1"
 description = "mdcat + inline images and Mermaid in the terminal (single Rust binary)"
 license = "MIT"
 repository = "https://github.com/oharato/mdview"
