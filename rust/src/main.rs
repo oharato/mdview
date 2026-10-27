@@ -76,6 +76,10 @@ struct Args {
     #[arg(short = 'i', long = "image-width")]
     image_width: Option<u32>,
 
+    /// Maximum image height in terminal rows (default: 2/3 of the terminal).
+    #[arg(long = "image-max-height", default_value_t = 0)]
+    image_max_height: u16,
+
     /// Rendering mode.
     #[arg(short = 'r', long, value_enum, default_value_t = Renderer::Auto)]
     renderer: Renderer,
@@ -156,6 +160,7 @@ struct Args {
 struct Options {
     width: u16,
     image_width: u32,
+    image_max_height: u16,
     renderer: Renderer,
     color_mode: ColorMode,
     image_colors: usize,
@@ -181,6 +186,7 @@ impl Options {
         Self {
             width,
             image_width,
+            image_max_height: args.image_max_height,
             renderer: args.renderer,
             color_mode: args.colours,
             image_colors: args.image_colours.clamp(2, 256),
@@ -363,7 +369,7 @@ fn print_check(options: &Options) {
     let renderer = choose_renderer(options);
     let (columns, _) = term::terminal_size();
 
-    let lines: [(String, String); 18] = [
+    let lines: [(String, String); 19] = [
         ("mdview".into(), update::current_version().into()),
         ("rust".into(), "built-in (no Node/Python runtime)".into()),
         (
@@ -389,6 +395,13 @@ fn print_check(options: &Options) {
             "window pixels".into(),
             window
                 .map(|(width, height)| format!("{width}x{height}"))
+                .unwrap_or_else(|| "不明".into()),
+        ),
+        (
+            "background".into(),
+            probe
+                .background
+                .map(|[r, g, b]| format!("#{r:02x}{g:02x}{b:02x}"))
                 .unwrap_or_else(|| "不明".into()),
         ),
         ("interactive".into(), term::is_interactive().to_string()),
@@ -614,18 +627,21 @@ fn draw_image(
     page_mode: bool,
 ) -> Result<()> {
     let renderer = choose_renderer(options);
+    let detected_background = term::terminal_background();
     let image = match images::resolve_background(
         options.image_bg.as_str(),
         options.light,
         renderer.image_kind(),
+        detected_background,
     ) {
         Some(background) => images::flatten_image(image, background),
         None => image.clone(),
     };
 
-    let (rows, _) = term::terminal_size();
+    let (_, rows) = term::terminal_size();
     let cell = term::cell_pixels();
     let window = term::window_pixels();
+    let max_rows = images::max_image_rows(rows, options.image_max_height);
     let kind = renderer.image_kind();
 
     if matches!(
@@ -640,7 +656,7 @@ fn draw_image(
             window,
             options.pixel_scale,
             options.upscale,
-            rows,
+            max_rows,
         );
         let resized = images::resize_image(&image, width, height);
         let rows_cells = ((resized.height() as f64) / cell.1.max(1) as f64)
@@ -698,12 +714,21 @@ fn draw_image(
             ImageRendererKind::Blocks => unreachable!(),
         }
     } else {
-        let max_rows = rows.saturating_sub(3).max(4) as u32;
         let plan =
             blocks::plan_half_blocks(image.width(), image.height(), options.image_width, max_rows);
         let resized = images::resize_image(&image, plan.cols, plan.rows * 2);
-        let rendered =
-            blocks::render_half_blocks(&resized, options.image_width, max_rows, options.color_mode);
+        let block_background = images::blend_background(
+            options.image_bg.as_str(),
+            options.light,
+            detected_background,
+        );
+        let rendered = blocks::render_half_blocks(
+            &resized,
+            options.image_width,
+            max_rows,
+            options.color_mode,
+            block_background,
+        );
         sink.text(&rendered)?;
     }
     Ok(())

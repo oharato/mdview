@@ -22,6 +22,8 @@ pub struct ProbeResult {
     pub cell: Option<(u32, u32)>,
     pub window: Option<(u32, u32)>,
     pub terminal: Option<(String, String)>,
+    /// Terminal background colour from OSC 11, if the terminal answered.
+    pub background: Option<[u8; 3]>,
 }
 
 static DA1_RE: LazyLock<Regex> =
@@ -32,6 +34,18 @@ static WINDOW_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\x1b\[4;(\d+);(\d+)t").expect("window regex"));
 static XTVERSION_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\x1bP>\|([^\x1b]*)\x1b\\").expect("XTVERSION regex"));
+static BACKGROUND_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"\x1b\]11;rgb:([0-9a-fA-F]{1,4})/([0-9a-fA-F]{1,4})/([0-9a-fA-F]{1,4})(?:\x07|\x1b\\)",
+    )
+    .expect("OSC 11 regex")
+});
+
+fn parse_color_component(value: &str) -> Option<u8> {
+    let parsed = u32::from_str_radix(value, 16).ok()?;
+    let max = (1u32 << (4 * value.len() as u32)) - 1;
+    Some(((parsed * 255) / max) as u8)
+}
 
 const TIMEOUT: Duration = Duration::from_millis(300);
 
@@ -60,6 +74,7 @@ pub fn parse_probe(raw: &str) -> ProbeResult {
         cell: None,
         window: None,
         terminal: parse_xtversion(raw),
+        background: None,
     };
 
     if let Some(captures) = DA1_RE.captures(raw) {
@@ -74,6 +89,16 @@ pub fn parse_probe(raw: &str) -> ProbeResult {
             if width > 0 && height > 0 {
                 result.cell = Some((width, height));
             }
+        }
+    }
+    if let Some(captures) = BACKGROUND_RE.captures(raw) {
+        let component = |index: usize| {
+            captures
+                .get(index)
+                .and_then(|m| parse_color_component(m.as_str()))
+        };
+        if let (Some(r), Some(g), Some(b)) = (component(1), component(2), component(3)) {
+            result.background = Some([r, g, b]);
         }
     }
     if let Some(captures) = WINDOW_RE.captures(raw) {
@@ -124,7 +149,7 @@ fn probe_tty() -> Option<ProbeResult> {
     }
 
     let query = format!(
-        "\x1b[c\x1b[16t\x1b[14t\x1b[>0q{}{}",
+        "\x1b]11;?\x07\x1b[c\x1b[16t\x1b[14t\x1b[>0q{}{}",
         KITTY_QUERY,
         kitty_self_test_sequence()
     );
@@ -316,6 +341,11 @@ pub fn window_pixels() -> Option<(u32, u32)> {
     probe_terminal().window
 }
 
+/// Terminal background colour reported by OSC 11.
+pub fn terminal_background() -> Option<[u8; 3]> {
+    probe_terminal().background
+}
+
 /// Terminal size in cells. Piped output uses the same 100x40 default as the
 /// Node implementation; interactive output uses the real terminal size.
 pub fn terminal_size() -> (u16, u16) {
@@ -350,7 +380,7 @@ mod tests {
 
     #[test]
     fn parses_da1_cell_window_and_xtversion() {
-        let raw = "\x1b[?62;4;22c\x1b[6;36;18t\x1b[4;1200;2400t\x1bP>|WezTerm 20240203\x1b\\";
+        let raw = "\x1b[?62;4;22c\x1b[6;36;18t\x1b[4;1200;2400t\x1bP>|WezTerm 20240203\x1b\\\x1b]11;rgb:1e1e/1e1e/2020\x07";
         let probe = parse_probe(raw);
         assert_eq!(probe.sixel, Some(true));
         assert_eq!(probe.cell, Some((18, 36)));
@@ -359,6 +389,7 @@ mod tests {
             probe.terminal,
             Some(("WezTerm".to_string(), "20240203".to_string()))
         );
+        assert_eq!(probe.background, Some([0x1e, 0x1e, 0x20]));
     }
 
     #[test]

@@ -25,7 +25,10 @@ Linux 向けの単体バイナリとして配布できます。
 - **画像プロトコルを内蔵** — Kitty graphics / Sixel / iTerm2 / 半ブロック。
   `img2sixel` / `chafa` / `kitten icat` などの外部ツールは不要
 - **透過を保持** — Kitty / iTerm2 / 半ブロックでは透過 PNG・SVG が端末背景に溶け込む。
-  Sixel は仕様上アルファを持てないため背景色に合成
+  Sixel は仕様上アルファを持てないため、OSC 11 で取得した端末背景色に合成する
+  （取得できない場合は `--light` / `--image-bg` を使用）
+- **画面に収まる画像サイズ** — 画像・図の高さを既定で端末の 2/3 に制限
+  （`--image-max-height` で変更可能）。縦長のクラス図でも画面外にはみ出しにくい
 - **端末の自動判定** — DA1 / CSI 16t / CSI 14t / XTVERSION / Kitty クエリ・転送テスト
 - **ページャ** — 前後移動・見出し一覧・セクションジャンプ。画像もそのまま表示
 - **キャッシュ** — Mermaid とリモート画像を `~/.cache/mdview/` に保存
@@ -102,6 +105,7 @@ cat README.md | mdview
 |---|---|
 | `-w, --width N` | テキストの最大桁数（既定: 端末幅、最大 120） |
 | `-i, --image-width N` | 画像・図の横幅（端末桁数、既定: 端末幅 - 2） |
+| `--image-max-height N` | 画像・図の最大高さ（端末行数、既定: 端末の 2/3） |
 | `-r, --renderer auto\|kitty\|sixel\|iterm\|blocks` | 描画方式（既定: 自動） |
 | `--colours truecolor\|256` | 半ブロック描画時の色数 |
 | `--image-colours N` | Sixel の色数（既定: 256、2〜256） |
@@ -232,8 +236,9 @@ Herdr のペイン内で `mdview --check` が `kitty support: yes` / `kitty tran
      制御します。両方に設定し、Herdr server / client を再起動または再接続してください。
 2. **外側の端末が Herdr の raw RGBA 出力に対応していない**
    - Windows Terminal / VSCode の統合ターミナルなど、Kitty graphics 自体に対応しない端末では
-     Herdr 経由の画像は表示できません。その場合は Herdr を使わず、Sixel 対応の端末で
-     直接 `mdview` を実行してください。
+     Herdr 経由の画像は表示できません。**Windows Terminal + Herdr では画像が出ません**
+     （WezTerm など Kitty graphics 対応端末では表示されます）。その場合は Herdr を使わず、
+     Windows Terminal の Sixel 対応で直接 `mdview` を実行してください。
 3. **Herdr のバージョンが古い**
    - `herdr --version` と `herdr config check` を確認してください。
 

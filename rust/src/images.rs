@@ -148,16 +148,46 @@ pub fn flatten_image(image: &RgbaImage, background: Rgb) -> RgbaImage {
     output
 }
 
-/// Decide how transparent pixels should be treated.
-pub fn resolve_background(value: &str, light: bool, renderer: ImageRendererKind) -> Option<Rgb> {
+fn fallback_background(light: bool) -> Rgb {
+    if light {
+        [255, 255, 255]
+    } else {
+        [12, 12, 12]
+    }
+}
+
+/// Decide how transparent pixels should be treated for an image protocol.
+///
+/// `detected` is the terminal background from OSC 11, used for Sixel (which
+/// cannot carry alpha) when `--image-bg auto` is selected.
+pub fn resolve_background(
+    value: &str,
+    light: bool,
+    renderer: ImageRendererKind,
+    detected: Option<Rgb>,
+) -> Option<Rgb> {
     if value == "none" {
         return None;
     }
     if value == "auto" {
         if renderer == ImageRendererKind::Sixel {
-            return Some(if light { [255, 255, 255] } else { [12, 12, 12] });
+            return Some(detected.unwrap_or_else(|| fallback_background(light)));
         }
         return None;
+    }
+    parse_background(value, light)
+}
+
+/// Background used to blend partial alpha in half-block rendering.
+///
+/// Fully transparent pixels still stay transparent; only 1..254 alpha values
+/// are blended. `none` disables blending.
+pub fn blend_background(value: &str, light: bool, detected: Option<Rgb>) -> Option<Rgb> {
+    if value == "none" {
+        return None;
+    }
+    if value == "auto" {
+        return Some(detected.unwrap_or_else(|| fallback_background(light)));
     }
     parse_background(value, light)
 }
@@ -185,6 +215,21 @@ pub fn parse_background(value: &str, light: bool) -> Option<Rgb> {
     ])
 }
 
+/// Maximum image height in terminal rows.
+///
+/// `0` uses two thirds of the terminal height so a tall diagram (class
+/// diagrams in particular) leaves room for surrounding text. A positive
+/// override is clamped to the terminal height.
+pub fn max_image_rows(terminal_rows: u16, override_rows: u16) -> u32 {
+    let usable = terminal_rows.max(6) as u32;
+    let auto = (usable * 2 / 3).max(6);
+    if override_rows == 0 {
+        auto
+    } else {
+        (override_rows as u32).min(usable).max(1)
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 /// Choose the display size in pixels for Kitty / Sixel / iTerm2.
 pub fn plan_display_size(
@@ -195,7 +240,7 @@ pub fn plan_display_size(
     window: Option<(u32, u32)>,
     pixel_scale: f32,
     upscale: bool,
-    terminal_rows: u16,
+    max_rows: u32,
 ) -> (u32, u32) {
     let mut target_width = ((image_width_cols * cell.0) as f32).round().max(8.0);
     if (pixel_scale - 1.0).abs() > f32::EPSILON {
@@ -209,7 +254,7 @@ pub fn plan_display_size(
         return (target_width.max(1.0) as u32, 1);
     }
 
-    let max_height = (terminal_rows.saturating_sub(3) as f32 * cell.1 as f32).max(6.0);
+    let max_height = (max_rows.max(1) as f32 * cell.1.max(1) as f32).max(1.0);
     let mut scale = (target_width / width as f32).min(max_height / height as f32);
     if scale > 1.0 {
         scale = if upscale { scale.min(3.0) } else { 1.0 };
@@ -247,39 +292,43 @@ mod tests {
     #[test]
     fn auto_background_preserves_alpha_except_sixel() {
         assert_eq!(
-            resolve_background("auto", false, ImageRendererKind::Kitty),
+            resolve_background("auto", false, ImageRendererKind::Kitty, None),
             None
         );
         assert_eq!(
-            resolve_background("auto", false, ImageRendererKind::Iterm),
+            resolve_background("auto", false, ImageRendererKind::Iterm, None),
             None
         );
         assert_eq!(
-            resolve_background("auto", false, ImageRendererKind::Blocks),
+            resolve_background("auto", false, ImageRendererKind::Blocks, None),
             None
         );
         assert_eq!(
-            resolve_background("auto", false, ImageRendererKind::Sixel),
+            resolve_background("auto", false, ImageRendererKind::Sixel, None),
             Some([12, 12, 12])
         );
         assert_eq!(
-            resolve_background("auto", true, ImageRendererKind::Sixel),
+            resolve_background("auto", true, ImageRendererKind::Sixel, None),
             Some([255, 255, 255])
+        );
+        assert_eq!(
+            resolve_background("auto", false, ImageRendererKind::Sixel, Some([30, 30, 32])),
+            Some([30, 30, 32])
         );
     }
 
     #[test]
     fn explicit_backgrounds_are_parsed() {
         assert_eq!(
-            resolve_background("#ff0000", false, ImageRendererKind::Kitty),
+            resolve_background("#ff0000", false, ImageRendererKind::Kitty, None),
             Some([255, 0, 0])
         );
         assert_eq!(
-            resolve_background("#0f0", false, ImageRendererKind::Blocks),
+            resolve_background("#0f0", false, ImageRendererKind::Blocks, None),
             Some([0, 255, 0])
         );
         assert_eq!(
-            resolve_background("none", false, ImageRendererKind::Sixel),
+            resolve_background("none", false, ImageRendererKind::Sixel, None),
             None
         );
         assert_eq!(parse_background("auto", false), Some([12, 12, 12]));
@@ -304,6 +353,24 @@ mod tests {
 
         let (width, height) = plan_display_size(100, 100, 40, (9, 18), None, 1.0, false, 40);
         assert_eq!((width, height), (100, 100));
+    }
+
+    #[test]
+    fn display_size_caps_tall_images() {
+        let (width, height) = plan_display_size(1000, 5000, 179, (9, 18), None, 1.0, true, 46);
+        assert!(height <= 46 * 18);
+        assert!(width <= 179 * 9);
+        let aspect = height as f64 / width as f64;
+        assert!((aspect - 5.0).abs() < 0.02);
+    }
+
+    #[test]
+    fn max_image_rows_uses_two_thirds_by_default() {
+        assert_eq!(max_image_rows(69, 0), 46);
+        assert_eq!(max_image_rows(40, 0), 26);
+        assert_eq!(max_image_rows(9, 0), 6);
+        assert_eq!(max_image_rows(69, 20), 20);
+        assert_eq!(max_image_rows(69, 100), 69);
     }
 
     #[test]

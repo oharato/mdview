@@ -63,6 +63,27 @@ fn to_256(r: u8, g: u8, b: u8) -> u8 {
     index
 }
 
+fn blend_pixel(data: &[u8], index: usize, background: Option<[u8; 3]>) -> (u8, u8, u8, u8) {
+    let alpha = data[index + 3];
+    if alpha == 0 {
+        return (0, 0, 0, 0);
+    }
+    if alpha == 255 {
+        return (data[index], data[index + 1], data[index + 2], 255);
+    }
+    let Some(background) = background else {
+        return (data[index], data[index + 1], data[index + 2], alpha);
+    };
+    let alpha = alpha as u32;
+    let inverse = 255 - alpha;
+    (
+        ((data[index] as u32 * alpha + background[0] as u32 * inverse) / 255) as u8,
+        ((data[index + 1] as u32 * alpha + background[1] as u32 * inverse) / 255) as u8,
+        ((data[index + 2] as u32 * alpha + background[2] as u32 * inverse) / 255) as u8,
+        255,
+    )
+}
+
 fn escape_256(r: u8, g: u8, b: u8, background: bool) -> String {
     format!(
         "\x1b[{};5;{}m",
@@ -72,11 +93,16 @@ fn escape_256(r: u8, g: u8, b: u8, background: bool) -> String {
 }
 
 /// Render an image as `▀` half-blocks.
+///
+/// When `background` is set, partially transparent pixels are alpha-blended
+/// against it (fully transparent pixels still leave the terminal background
+/// visible).
 pub fn render_half_blocks(
     image: &RgbaImage,
     max_cols: u32,
     max_rows: u32,
     mode: ColorMode,
+    background: Option<[u8; 3]>,
 ) -> String {
     let plan = plan_half_blocks(image.width(), image.height(), max_cols, max_rows);
     let resized = image::imageops::resize(image, plan.cols, plan.rows * 2, FilterType::Lanczos3);
@@ -97,10 +123,12 @@ pub fn render_half_blocks(
         for x in 0..width {
             let ti = top_row + x * 4;
             let bi = bottom_row + x * 4;
-            let top_opaque = data[ti + 3] >= 128;
-            let bottom_opaque = data[bi + 3] >= 128;
-            let top = (data[ti], data[ti + 1], data[ti + 2]);
-            let bottom = (data[bi], data[bi + 1], data[bi + 2]);
+            let top = blend_pixel(data, ti, background);
+            let bottom = blend_pixel(data, bi, background);
+            let top_opaque = top.3 >= 128;
+            let bottom_opaque = bottom.3 >= 128;
+            let top = (top.0, top.1, top.2);
+            let bottom = (bottom.0, bottom.1, bottom.2);
 
             if top_opaque {
                 if current_fg != Some(top) {
@@ -164,7 +192,7 @@ mod tests {
     #[test]
     fn renders_truecolor_half_blocks() {
         let image = solid(2, 2, [255, 0, 0, 255]);
-        let output = render_half_blocks(&image, 2, 1, ColorMode::Truecolor);
+        let output = render_half_blocks(&image, 2, 1, ColorMode::Truecolor, None);
         assert!(output.contains("\x1b[38;2;255;0;0m"));
         assert!(output.contains('\u{2580}'));
         assert!(output.ends_with('\n'));
@@ -173,15 +201,24 @@ mod tests {
     #[test]
     fn transparent_pixels_leave_terminal_background() {
         let image = solid(2, 2, [0, 0, 0, 0]);
-        let output = render_half_blocks(&image, 2, 1, ColorMode::Truecolor);
+        let output = render_half_blocks(&image, 2, 1, ColorMode::Truecolor, None);
         assert!(!output.contains("38;2;"));
         assert!(output.contains(' '));
     }
 
     #[test]
+    fn blends_partial_alpha_with_background() {
+        let mut image = solid(1, 2, [255, 0, 0, 128]);
+        image.put_pixel(0, 0, Rgba([255, 0, 0, 128]));
+        image.put_pixel(0, 1, Rgba([255, 0, 0, 128]));
+        let output = render_half_blocks(&image, 1, 1, ColorMode::Truecolor, Some([0, 0, 255]));
+        assert!(output.contains("\x1b[38;2;128;0;127m"));
+    }
+
+    #[test]
     fn supports_ansi_256_colors() {
         let image = solid(2, 2, [255, 0, 0, 255]);
-        let output = render_half_blocks(&image, 2, 1, ColorMode::Ansi256);
+        let output = render_half_blocks(&image, 2, 1, ColorMode::Ansi256, None);
         assert!(output.contains("\x1b[38;5;"));
     }
 }
