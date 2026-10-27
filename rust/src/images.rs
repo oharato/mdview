@@ -101,6 +101,12 @@ fn system_fonts() -> Arc<resvg::usvg::fontdb::Database> {
         .get_or_init(|| {
             let mut database = resvg::usvg::fontdb::Database::new();
             database.load_system_fonts();
+            // resvg resolves generic CSS families through fontdb. Without
+            // these mappings an SVG using `font-family="sans-serif"` renders
+            // no text at all.
+            database.set_sans_serif_family("Noto Sans CJK JP");
+            database.set_serif_family("Noto Serif CJK JP");
+            database.set_monospace_family("DejaVu Sans Mono");
             Arc::new(database)
         })
         .clone()
@@ -371,6 +377,16 @@ mod tests {
         assert_eq!(max_image_rows(9, 0), 6);
         assert_eq!(max_image_rows(69, 20), 20);
         assert_eq!(max_image_rows(69, 100), 69);
+    }
+
+    #[test]
+    fn renders_text_with_generic_sans_serif_family() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="160" height="60">
+            <text x="5" y="40" font-family="sans-serif" font-size="28" fill="#ffffff">ABC</text>
+        </svg>"##;
+        let image = rasterize_svg(svg, 160).expect("svg");
+        let opaque = image.pixels().filter(|pixel| pixel[3] > 0).count();
+        assert!(opaque > 100, "expected rendered text pixels, got {opaque}");
     }
 
     #[test]
