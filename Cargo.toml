@@ -16,7 +16,7 @@ image = { version = "0.25.10", default-features = false, features = ["png", "jpe
 libc = "0.2.191"
 # sequence diagram fixes are in vendor/mermaid-rs-renderer (see PATCHES.md)
 mermaid-rs-renderer = { version = "0.3.1", default-features = false }
-pulldown-cmark = { version = "0.12", default-features = false }
+pulldown-cmark = { version = "0.13", default-features = false }
 # 2.7.1 は crates.io で yanked。2.10 以降は別メンテナのフォークなので、
 # 公式 swsnr/mdcat の最後のリリースである 2.9.0 に固定する。
 pulldown-cmark-mdcat = { version = "=2.9.0", default-features = false }

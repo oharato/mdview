@@ -944,7 +944,7 @@ dependencies = [
  "image",
  "libc",
  "mermaid-rs-renderer",
- "pulldown-cmark",
+ "pulldown-cmark 0.13.5",
  "pulldown-cmark-mdcat",
  "regex",
  "resvg",
@@ -1277,6 +1277,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulldown-cmark"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "278e9268c93b9e498a2da46c34d90ba93a3255eb99009646398f34bc73ab36eb"
+dependencies = [
+ "bitflags 2.13.2",
+ "memchr",
+ "unicase",
+]
+
+[[package]]
 name = "pulldown-cmark-mdcat"
 version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1287,7 +1298,7 @@ dependencies = [
  "gethostname",
  "mime",
  "png 0.18.1",
- "pulldown-cmark",
+ "pulldown-cmark 0.12.2",
  "ratex-layout",
  "ratex-parser",
  "ratex-render",
