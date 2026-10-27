@@ -63,6 +63,8 @@ updates:
     ignore:
       # 2.10 以降は別メンテナのフォーク。公式 2.9.0 に固定する。
       - dependency-name: "pulldown-cmark-mdcat"
+      # vendored patch (see rust/vendor/mermaid-rs-renderer/PATCHES.md)
+      - dependency-name: "mermaid-rs-renderer"
     groups:
       rust-minor-and-patch:
         applies-to: version-updates

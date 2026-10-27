@@ -127,6 +127,14 @@ mod tests {
     }
 
     #[test]
+    fn sequence_labels_stay_on_one_line_and_lifelines_are_visible() {
+        let code = "sequenceDiagram\n  participant U as ユーザー\n  participant M as mdview\n  U->>M: mdview README.md\n";
+        let svg = render_svg(code, MermaidTheme::Dark).expect("svg");
+        assert!(svg.contains(">mdview README.md</tspan>"));
+        assert!(svg.contains("stroke-width=\"1.0\""));
+    }
+
+    #[test]
     fn cache_path_is_stable() {
         let a = cache_path("flowchart LR; A-->B", MermaidTheme::Dark, 2048);
         let b = cache_path("flowchart LR; A-->B", MermaidTheme::Dark, 2048);

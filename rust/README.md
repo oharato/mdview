@@ -266,6 +266,17 @@ mdview -r blocks examples/demo.md
 `kitten icat` / `chafa` も表示できない場合は mdview ではなく Herdr と外側端末の経路の問題です。
 Herdr の設定を変えた後は `herdr server stop` → `herdr` で再起動してください。
 
+### Mermaid レンダラのローカルパッチ
+
+`mermaid-rs-renderer 0.3.1` は `vendor/mermaid-rs-renderer/` に vendoring し、次の 2 点だけ
+パッチを当てています（[`PATCHES.md`](vendor/mermaid-rs-renderer/PATCHES.md)）。
+
+- シーケンス図のラベル折り返し上限を 14 → 40 文字へ
+- 参加者のライフラインを `stroke-width: 0.5` → `1.0` へ
+
+上流の `LayoutConfig` では変更できないため、`Cargo.toml` の `[patch.crates-io]` で
+ローカルパスを参照しています。上流で修正されたら vendoring を外してください。
+
 ## 既知の制限・Node 版との違い
 
 - **Mermaid の見た目**: `mermaid-rs-renderer 0.3.1` は開発初期の Pure Rust 実装です。

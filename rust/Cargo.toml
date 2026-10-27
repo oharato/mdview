@@ -14,6 +14,7 @@ clap = { version = "4.6.7", features = ["derive"] }
 crossterm = { version = "0.29.0", default-features = false, features = ["events"] }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff"] }
 libc = "0.2.191"
+# sequence diagram fixes are in vendor/mermaid-rs-renderer (see PATCHES.md)
 mermaid-rs-renderer = { version = "0.3.1", default-features = false }
 pulldown-cmark = { version = "0.12", default-features = false }
 # 2.7.1 は crates.io で yanked。2.10 以降は別メンテナのフォークなので、
@@ -38,3 +39,7 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[patch.crates-io]
+# 0.3.1 + sequence label wrap / lifeline width fixes
+mermaid-rs-renderer = { path = "vendor/mermaid-rs-renderer" }
