@@ -115,7 +115,7 @@ cat README.md | mdview
 | `--light` | 明るい背景の端末として扱う |
 | `-c, --no-colour` | 色・画像を無効化 |
 | `--mermaid-theme auto\|dark\|default\|neutral\|modern` | Mermaid の配色（既定: auto） |
-| `--mermaid-width N` | Mermaid のラスタライズ幅 px（既定: 2048） |
+| `--mermaid-width N` | Mermaid の最大ラスタライズ幅 px（既定: 2048。実際は表示解像度に合わせて縮小） |
 | `-p, --paginate` | 内蔵ページャで表示 |
 | `--toc` | 見出し一覧 |
 | `--section N` | N 番目の見出しのセクションだけ表示 |
@@ -177,6 +177,25 @@ Markdown
 | `src/pager.rs` | ページャ、見出しジャンプ |
 | `src/remote.rs` | リモート画像の取得とキャッシュ |
 | `src/update.rs` | リリース確認・自己更新 |
+
+## 性能
+
+Mermaid / SVG は固定 2048px ではなく、**実際の表示解像度に合わせてラスタライズ**します。
+半ブロック表示では横 `image_width * 4` px、Kitty / Sixel / iTerm2 では
+`image_width * セル幅 * --pixel-scale` px を目安にし、`--mermaid-width` を上限にします。
+2048px の PNG を毎回デコード・縮小していた従来のボトルネックを避けるためです。
+
+この環境（Linux、デモ = Mermaid 4 図 + PNG/SVG 2 枚）での参考値:
+
+| ケース | Node 版 | Rust 版 |
+|---|---:|---:|
+| `-c`（テキストのみ） | 2.3 s | 0.01 s |
+| `-r blocks` 初回 | 2.3 s | 0.3 s |
+| `-r blocks` キャッシュ後 | 0.7 s | 0.1 s |
+| `-r kitty` 初回 | 2.6 s | 1.2 s |
+| `-r kitty` キャッシュ後 | 1.1 s | 0.6 s |
+
+数値は環境依存です。Mermaid のキャッシュは `~/.cache/mdview/mermaid/` にあります。
 
 ## テスト
 

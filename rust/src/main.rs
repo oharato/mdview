@@ -336,6 +336,23 @@ fn choose_renderer(options: &Options) -> Renderer {
     Renderer::Blocks
 }
 
+/// Rasterization width for Mermaid / SVG.
+///
+/// Rendering a 2048px PNG for half-blocks that are only ~100 cells wide is
+/// wasteful: decode + resize then dominates the whole run. Use roughly the
+/// final display resolution instead, keeping `--mermaid-width` as an upper
+/// bound for users who really want supersampling.
+fn mermaid_raster_width(options: &Options) -> u32 {
+    let renderer = choose_renderer(options);
+    let desired = if renderer == Renderer::Blocks {
+        options.image_width.saturating_mul(4)
+    } else {
+        let cell_width = term::cell_pixels().0.max(1);
+        (options.image_width as f32 * cell_width as f32 * options.pixel_scale.max(1.0)) as u32
+    };
+    desired.max(256).min(options.mermaid_width.max(256))
+}
+
 fn print_toc(path: Option<&Path>, show_name: bool) -> Result<()> {
     let (markdown, _, _) = read_document(path)?;
     let headings = sections::list_headings(&markdown);
@@ -545,7 +562,8 @@ fn render_mermaid(
 
     let started = Instant::now();
     let theme = options.mermaid_theme.resolve(options.light);
-    match mermaid::load_cached(&block.code, theme, options.mermaid_width) {
+    let cache_width = mermaid_raster_width(options);
+    match mermaid::load_cached(&block.code, theme, cache_width) {
         Ok(image) => {
             if std::env::var_os("MDVIEW_DEBUG").is_some() {
                 eprintln!(
@@ -603,7 +621,7 @@ fn render_image(
 
     let started = Instant::now();
     let image = if images::is_svg(&path) {
-        images::rasterize_svg_file(&path, options.mermaid_width)?
+        images::rasterize_svg_file(&path, mermaid_raster_width(options))?
     } else {
         images::load_raster(&path)?
     };
