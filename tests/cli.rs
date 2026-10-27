@@ -8,7 +8,7 @@ fn binary() -> &'static str {
 }
 
 fn demo() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/demo.md")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/demo.md")
 }
 
 fn run(args: &[&str]) -> std::process::Output {

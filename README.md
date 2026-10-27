@@ -1,153 +1,100 @@
-# mdview
+# mdview (Rust single binary)
 
-`mdcat` の書式をそのままに、**画像と Mermaid を端末内に描画する** Markdown ビューアです。
+`mdcat` の書式をそのままに、画像と Mermaid を端末内に描画する Markdown ビューアの
+**Rust 実装**です。Node.js / npm / sharp / libvips / 外部 mdcat プロセスを必要とせず、
+Linux 向けの単体バイナリとして配布できます。
 
-Kitty graphics（WezTerm / kitty / Ghostty / Herdr）・Sixel（Windows Terminal 1.22+）・
-iTerm2（iTerm2 / VSCode）のいずれかでフル解像度に描画し、
-非対応の端末では ANSI トゥルーカラーの半ブロック（`▀`）で描画します。
-Mermaid は [Pele](https://github.com/obsidianmd/pele) でレンダリングするため、
-Chrome / Puppeteer は不要です。
+- テキスト描画: [`pulldown-cmark-mdcat`](https://crates.io/crates/pulldown-cmark-mdcat)（mdcat 本体のレンダラ）
+- Mermaid: [`mermaid-rs-renderer`](https://crates.io/crates/mermaid-rs-renderer)（Pure Rust）
+- 画像: [`image`](https://crates.io/crates/image) + [`resvg`](https://crates.io/crates/resvg)
+- 端末: Kitty graphics / Sixel / iTerm2 / ANSI 半ブロック
 
-[![CI](https://github.com/oharato/mdview/actions/workflows/ci.yml/badge.svg)](https://github.com/oharato/mdview/actions/workflows/ci.yml)
-
-> **Rust 単体バイナリ版（Linux）を追加しました**
->
-> `rust/` に Node.js・npm・sharp/libvips・外部 mdcat を必要としない実装があります。
-> Mermaid は Pure Rust の `mermaid-rs-renderer`、画像は `image` + `resvg` を使用し、
-> 約 12MB の単体バイナリになります（Linux x86_64 / aarch64）。
-> ビルド・使い方・既知の制限は [`rust/README.md`](rust/README.md) を参照してください。
->
-> ```bash
-> cd rust && cargo build --release
-> ./target/release/mdview examples/demo.md
-> ```
-
-![出力例](docs/diagram.png)
-
-## なぜ必要か
-
-`mdcat` は kitty / iTerm2 / Terminology 系の画像プロトコルしか話せません。
-Windows Terminal や SSH 越しの端末では画像も Mermaid も表示されず、
-Mermaid はコードブロックのまま流れてしまいます。
-
-`mdview` は
-
-1. テキスト部分を `mdcat` に渡し（見た目は mdcat と同一）、
-2. Mermaid を Pele で SVG → resvg で PNG 化し、
-3. 画像・図を端末の実ピクセルに合わせて Sixel（または半ブロック）で描画します。
+> このリポジトリの正式実装は Rust 版です。旧 Node.js 実装 (v0.6.1) は
+> `legacy/node` ブランチと `node-v0.6.1` タグで凍結しています。詳細は
+> [`LEGACY.md`](LEGACY.md) を参照してください。
 
 ## 特徴
 
-- **mdcat 互換のテキスト表示** — シンタックスハイライト、リンク、見出し記号などは mdcat のまま
-- **表は CJK 幅を考慮して描画** — mdcat の表は列幅をバイト数・パディングを文字数で計算するため
-  日本語や絵文字がずれる（`pulldown-cmark-mdcat` 側の制限）。mdview は表だけ自前で描画する
-- **Mermaid を内蔵レンダリング** — Pele（ゼロ DOM）+ resvg。1 図あたり 0.1〜0.2 秒、Chrome 不要
-- **画像プロトコルを自前実装** — Kitty graphics / Sixel / iTerm2 を内蔵。
-  外部の画像ビューア不要（`img2sixel` / `chafa` / `kitten icat` などは不要）
-- **透過を保持** — Kitty / iTerm2 / 半ブロックでは透過 PNG・SVG が端末の背景に溶け込む
-  （Sixel は仕様上アルファを持てないため `--image-bg` の色に合成）
-- **表示サイズを自動補正** — `CSI 16t` / `CSI 14t` で端末のセルサイズ・ウィンドウサイズを実測し、
-  HiDPI（150% / 200% スケーリング）でも指定した桁数ぴったりに表示
-- **自動フォールバック** — プロトコルが使えない端末では半ブロック描画（描画できない記法はコードブロック）
-- **長い文書のためのナビゲーション** — `-p`（画像も使えるページャ。前後移動・見出し一覧・
-  セクションジャンプ）/ `--toc`（見出し一覧）/ `--section N`（節だけ表示）
-- **キャッシュ** — 図・画像は `~/.cache/mdview/` に保存され、2 回目以降は即表示
-- **TypeScript / ESM** — Node.js LTS だけで動作。Python は不要
+- **単体バイナリ** — Node.js も Python も外部 `mdcat` も不要。release ビルドは約 12MB
+- **mdcat 互換のテキスト** — `pulldown-cmark-mdcat 2.9.0` を使用。
+  デモでは `mdcat 2.7.1 --ansi --columns 100` の出力とバイト単位で一致。
+  （2.7.1 は crates.io で yanked、2.10 以降は別メンテナのフォークのため 2.9.0 に固定）
+- **CJK 対応の表** — mdcat の表レンダラはバイト幅で列を計算するため、日本語・絵文字が
+  ずれる。mdview は East Asian Width を考慮して自前で描画
+- **Mermaid を内蔵** — `mermaid-rs-renderer` で SVG を作り、`resvg` で PNG 化。
+  Chrome / Puppeteer / Pele は不要
+- **画像プロトコルを内蔵** — Kitty graphics / Sixel / iTerm2 / 半ブロック。
+  `img2sixel` / `chafa` / `kitten icat` などの外部ツールは不要
+- **透過を保持** — Kitty / iTerm2 / 半ブロックでは透過 PNG・SVG が端末背景に溶け込む。
+  Sixel は仕様上アルファを持てないため、OSC 11 で取得した端末背景色に合成する
+  （取得できない場合は `--light` / `--image-bg` を使用）
+- **画面に収まる画像サイズ** — 画像・図の高さを既定で端末の 2/3 に制限
+  （`--image-max-height` で変更可能）。縦長のクラス図でも画面外にはみ出しにくい
+- **端末の自動判定** — DA1 / CSI 16t / CSI 14t / XTVERSION / Kitty クエリ・転送テスト
+- **ページャ** — 前後移動・見出し一覧・セクションジャンプ。画像もそのまま表示
+- **キャッシュ** — Mermaid とリモート画像を `~/.cache/mdview/` に保存
+- **自己更新** — GitHub Releases の Linux バイナリを取得して置き換え
 
-## 対応端末
+## 対応環境
 
-| 端末 | 使用するプロトコル |
+| 項目 | 対応 |
 |---|---|
-| WezTerm / kitty / Ghostty | Kitty graphics |
-| Herdr（内側のペイン） | Kitty graphics（`kitty_graphics = true`、最近のバージョンは既定で有効） |
-| Windows Terminal 1.22+ / xterm（Sixel 対応ビルド） | Sixel |
-| iTerm2 | iTerm2 inline images |
-| VSCode 1.80+ の統合ターミナル | iTerm2 inline images |
-| その他 | ANSI 半ブロック（`▀`、低解像度） |
+| OS | Linux（x86_64 / aarch64） |
+| 端末 | WezTerm / kitty / Ghostty / Herdr / Windows Terminal (WSL) / xterm / iTerm2 / VSCode |
+| 画像形式 | PNG / JPEG / GIF / WebP / BMP / TIFF / SVG |
+| Mermaid | `mermaid-rs-renderer` が対応する 23 種類 |
 
-判定順は **Kitty graphics → Sixel → iTerm2 → 半ブロック** で、
-`mdview --check` で実際の判定結果を確認できます。手動で固定する場合は
-`-r kitty|sixel|iterm|blocks`、環境変数 `MDVIEW_KITTY=0|1` / `MDVIEW_SIXEL=0|1` を使います。
+Windows ネイティブは未対応です。端末プローブが `/dev/tty` を使うため、WSL 経由で
+利用してください（ページャ自体は crossterm ベースです）。
 
-## 必要なもの
+## ビルド
 
-| 依存 | 用途 | 必須 |
-|---|---|---|
-| [Node.js](https://nodejs.org/) 22.12+（LTS） | 実行環境 | 必須 |
-| [mdcat](https://github.com/swsnr/mdcat) 2.7.1 | Markdown のテキスト描画（`mdcat.version` で固定） | 必須 |
-| [pele](https://www.npmjs.com/package/pele) | Mermaid の SVG 化 | 同梱（依存関係） |
-| [@resvg/resvg-js](https://www.npmjs.com/package/@resvg/resvg-js) | SVG → PNG | 同梱（依存関係） |
-| [sharp](https://sharp.pixelplumbing.com/) | 画像のデコード・リサイズ | 同梱（依存関係） |
-| pnpm 10+ | インストール / ビルド | 必須 |
-
-## インストール
+Rust 1.88 以降が必要です（`rust-toolchain.toml` では 1.99.1 を固定）。mise を使う場合:
 
 ```bash
+mise use -g rust@1.99.1
+
 git clone https://github.com/oharato/mdview.git
 cd mdview
+cargo build --release
+./target/release/mdview --version
+```
+
+`cargo build --release` は既定でサイズ最適化（`opt-level = "z"`, LTO, strip）されます。
+バイナリは `target/release/mdview` にできます。
+
+### ローカルインストール
+
+```bash
+# リポジトリルートで
+cargo install --path .
+
+# GitHub Releases から（リリース後）
 ./install.sh
 ```
 
-`install.sh` は次を行います。
-
-- Node.js / pnpm の確認（pnpm は corepack で有効化を試みます）
-- `mdcat` が無ければ GitHub Releases から `~/.local/bin` に取得
-- `pnpm install` → `pnpm build`（TypeScript → `dist/`）
-- `~/.local/bin/mdview` から `dist/cli.js` へシンボリックリンク
-
-インストール先を変えたい場合は `BIN_DIR=~/bin ./install.sh` のように指定してください。
-
-### pnpm のグローバルインストール
-
-```bash
-pnpm add -g github:oharato/mdview   # prepare でビルドされます
-```
-
-## Rust 単体バイナリ版（Linux）
-
-Node.js を使わない実装を `rust/` に追加しています。詳細は [`rust/README.md`](rust/README.md) を参照してください。
-
-```bash
-cd rust
-cargo build --release
-./target/release/mdview --check
-./target/release/mdview -p ../README.md
-```
-
-テキスト描画は `pulldown-cmark-mdcat`（mdcat 本体のレンダラ）を使うため、mdcat と
-同じ書式になります。Mermaid は `mermaid-rs-renderer`（Pure Rust）で描画します。
-以降の「アップデート」「使い方」は従来の Node.js 実装の説明です。
-
-## アップデート
-
-```bash
-mdview --check-update   # 最新リリースとの比較（インストール方法も表示）
-mdview --update         # 自分自身を更新
-```
-
-`--update` はインストール方法を自動判定して実行します。
-
-| インストール方法 | 実行内容 |
-|---|---|
-| `git clone` + `install.sh`（symlink） | `git pull --ff-only` → `pnpm install --frozen-lockfile` → `pnpm build` |
-| `pnpm add -g` / `npm i -g` | `pnpm add -g github:oharato/mdview#v<最新>`（npm の場合は `npm i -g`） |
-| 判定できない場合 | 手動手順を表示 |
-
-バージョンは [GitHub のリリース](https://github.com/oharato/mdview/releases) を参照します。
+`./install.sh` は GitHub Releases の最新 Linux バイナリを `~/.local/bin` に
+インストールします（リリース後）。
 
 ## 使い方
 
 ```bash
-mdview examples/demo.md               # 同梱のデモ（テキスト・表・Mermaid・PNG・SVG）
-mdview README.md                      # 表示
-cat README.md | mdview                # 標準入力
-mdview -w 100 -i 100 doc.md           # テキスト100桁 / 画像100桁
-mdview -r blocks doc.md               # Sixel を使わず半ブロックで描画
-mdview -p doc.md                      # 1 ページずつ（space/Enter で次へ, q で終了）
-mdview --toc doc.md                   # 見出しの一覧
-mdview --section 3 doc.md             # 3 番目の見出しのセクションだけ
-mdview --check                        # 端末の対応状況を表示
-mdview --refresh doc.md               # 端末判定をやり直す
+mdview examples/demo.md               # 表示
+mdview -w 100 -i 80 examples/demo.md  # テキスト100桁 / 画像80桁
+mdview -r blocks examples/demo.md     # 画像プロトコルを使わず半ブロック
+mdview -p README.md                   # 内蔵ページャ
+mdview --toc README.md                # 見出し一覧
+mdview --section 3 README.md          # 3 番目の見出しのセクション
+mdview --check                        # 端末・ビルド情報
+mdview --refresh examples/demo.md     # 端末判定をやり直す
+mdview --check-update                 # 最新リリースとの比較
+mdview --update                       # 自分自身を更新
+```
+
+標準入力にも対応しています。
+
+```bash
+cat README.md | mdview
 ```
 
 ### オプション
@@ -155,204 +102,224 @@ mdview --refresh doc.md               # 端末判定をやり直す
 | オプション | 説明 |
 |---|---|
 | `-w, --width N` | テキストの最大桁数（既定: 端末幅、最大 120） |
-| `-i, --image-width N` | 画像・図の横幅（端末桁数、既定: 端末幅いっぱい） |
-| `-r, --renderer auto\|kitty\|sixel\|iterm\|blocks` | 描画方式（既定: 端末を自動判定） |
-| `--image-colours N` | Sixel の色数（既定: 256） |
-| `--image-bg auto\|none\|#RRGGBB` | 透過画像の扱い。`auto` はアルファ対応方式（Kitty/iTerm2/半ブロック）なら透過を保持し、Sixel は背景色に合成 |
+| `-i, --image-width N` | 画像・図の横幅（端末桁数、既定: 端末幅 - 2） |
+| `--image-max-height N` | 画像・図の最大高さ（端末行数、既定: 端末の 2/3） |
+| `-r, --renderer auto\|kitty\|sixel\|iterm\|blocks` | 描画方式（既定: 自動） |
+| `--colours truecolor\|256` | 半ブロック描画時の色数 |
+| `--image-colours N` | Sixel の色数（既定: 256、2〜256） |
+| `--image-bg auto\|none\|#RRGGBB` | 透過画像の扱い。`auto` はアルファ対応方式なら透過を保持し、Sixel は背景色に合成 |
 | `--pixel-scale F` | セルサイズを取得できない端末での倍率（HiDPI なら 2） |
 | `--upscale / --no-upscale` | 小さい画像を端末幅まで拡大（既定: 有効・最大 3 倍） |
-| `--light` | 明るい背景の端末として扱う（Mermaid のテーマ・画像背景） |
-| `--mermaid-theme auto\|default\|dark\|neutral` | Mermaid の配色 |
-| `--mermaid-width N` | Mermaid のラスタライズ幅 px（既定: 2048） |
-| `-c, --no-colour` | 色・画像を無効化（生の Markdown に近い表示） |
-| `-p, --paginate` | ページャで表示（前後移動・見出し一覧・ジャンプ。画像もそのまま出ます） |
-| `--toc` | 見出しの一覧を表示して終了（`--section` の番号が分かります） |
-| `--section N` | N 番目の見出しのセクションだけを表示 |
-| `--check` | 端末・依存の対応状況を表示して終了 |
-| `--check-update` | 新しいバージョンがあるか確認 |
-| `--update` | 最新バージョンへ自己アップデート |
+| `--light` | 明るい背景の端末として扱う |
+| `-c, --no-colour` | 色・画像を無効化 |
+| `--mermaid-theme auto\|dark\|default\|neutral\|modern` | Mermaid の配色（既定: auto） |
+| `--mermaid-width N` | Mermaid の最大ラスタライズ幅 px（既定: 2048。実際は表示解像度に合わせて縮小） |
+| `-p, --paginate` | 内蔵ページャで表示 |
+| `--toc` | 見出し一覧 |
+| `--section N` | N 番目の見出しのセクションだけ表示 |
+| `--check` | 端末・ビルド情報を表示 |
+| `--refresh` | 端末判定をやり直す（caps キャッシュを無視） |
+| `--check-update` | 新しいリリースがあるか確認 |
+| `--update` | 最新リリースへ自己更新（Linux） |
+| `-V, --version` | バージョン |
+| `-h, --help` | ヘルプ |
 
-環境変数: `MDVIEW_KITTY=0|1` / `MDVIEW_SIXEL=0|1`（プロトコルの強制）、
-`MDVIEW_CELL=18x36`（セルサイズ上書き）、`MDVIEW_CACHE`（キャッシュ先）、
-`MDVIEW_MDCAT`（mdcat のパス）。
+### 環境変数
 
-### 長い文書を読む
+| 変数 | 説明 |
+|---|---|
+| `MDVIEW_KITTY=0\|1` | Kitty graphics を強制 |
+| `MDVIEW_SIXEL=0\|1` | Sixel を強制 |
+| `MDVIEW_CELL=18x36` | セルサイズを上書き |
+| `MDVIEW_CACHE=DIR` | キャッシュ先（既定: `~/.cache/mdview`） |
 
-```bash
-mdview --toc README.md          #   1  mdview
-                                #   2    対応端末
-                                #   3    必要なもの ...
-mdview --section 2 README.md    # 「対応端末」だけを表示
-mdview -p README.md             # ページ送り（画像も表示される）
-```
-
-`less` などのページャは画像のエスケープ列を解釈しないため、画像を含む文書では
-`mdview -p`（内蔵ページャ）を使ってください。
-
-ページャのキー操作:
+### ページャのキー
 
 | キー | 動作 |
 |---|---|
 | `space` / `Enter` / `j` / `↓` | 次のページ |
 | `b` / `k` / `↑` | 前のページ |
-| `]` / `[` | 次の見出し / 前の見出しへジャンプ |
+| `]` / `[` | 次の見出し / 前の見出し |
 | `t` | 見出し一覧（`j`/`k` で選択、`Enter` でジャンプ、`t`/`Esc` で戻る） |
 | `g` / `G` | 先頭 / 末尾 |
-| `q` / `Esc` / Ctrl-C | 終了 |
-
-ステータス行には現在のページ番号と、その位置のセクション名が出ます。
-画面はオルタネートスクリーンを使うので、終了すると元の画面に戻ります。
+| `q` / `Esc` / `Ctrl-C` | 終了 |
 
 ## 動作のしくみ
 
-1. **端末プローブ** — DA1（`ESC [ c`）で Sixel 対応を、Kitty のクエリ
-   （`ESC _ G i=31 ; a=q,t=d,f=24 ; AAAA ESC \`）で Kitty graphics 対応を、
-   `CSI 16 t` / `CSI 14 t` でセルサイズ・ウィンドウサイズ（実ピクセル）を 1 回の問い合わせで取得。
-   Sixel の判定結果は `~/.cache/mdview/caps.json` に保存。
-2. **Markdown の分解** — ```` ```mermaid ```` フェンスと `![](...)` をプレースホルダに置換し、
-   テキスト部分だけ `mdcat --ansi` に渡す。
-3. **Mermaid** — Pele が出力する SVG は CSS 変数で配色されるため、変数を実色へ解決してから
-   resvg でラスタライズ（resvg は `var()` 非対応）。ダイアグラムは内容のハッシュでキャッシュ。
-4. **画像の送出** — Kitty graphics は PNG を 4096 文字ずつ分割送出し、`C=1`（カーソル固定）で
-   貼る。WezTerm は `C=1` だと「カーソルより下に残っている行数」までしか画像を貼らないため、
-   先に空行を確保してから貼り、最後にカーソルを進める。Sixel はメディアンカット減色 +
-   6 ピクセルバンド + `!<n><char>` のランレングス圧縮。iTerm2 は `ESC ]1337;File=inline=1`。
-5. **半ブロック描画** — Sixel 非対応端末では `▀` と 24bit カラーで描画（`--colours 256` で 256 色）。
-
-### トラブルシュート
-
-```bash
-mdview --check        # 端末・依存・採用プロトコルを表示
-mdview --refresh .    # 端末判定をやり直す（キャッシュを無視）
-mdview -r blocks .    # 画像プロトコルを使わず半ブロックで描画
+```text
+Markdown
+  ├─ Mermaid フェンス / 単独行画像 / GFM 表を抽出
+  ├─ テキスト部分 → pulldown-cmark-mdcat → ANSI
+  ├─ 表 → 自前レンダラ（East Asian Width）
+  ├─ Mermaid → mermaid-rs-renderer → SVG → resvg → PNG
+  └─ 画像 → image / resvg → PNG / RGBA
+        └─ Kitty graphics / Sixel / iTerm2 / 半ブロック
 ```
 
-`--check` の見方:
+主なモジュール:
 
-| 行 | 意味 |
+| ファイル | 役割 |
 |---|---|
-| `terminal` | XTVERSION で識別した端末名（例: `wezterm` / `windows terminal`） |
-| `kitty support` | 端末が kitty graphics のクエリに応答したか（`no response` は無応答） |
-| `kitty transfer` | 実際に（複数チャンクの）画像データを送って応答があったか |
-| `kitty usable` | 上記を踏まえて kitty を採用できるか |
-| `sixel support` | DA1 の Sixel 属性 |
-| `renderer` | 実際に採用されたプロトコル |
+| `src/main.rs` | CLI、文書処理、描画の振り分け |
+| `src/text.rs` | `pulldown-cmark-mdcat` によるテキスト描画 |
+| `src/markdown.rs` | Mermaid・画像の抽出とセグメント分割 |
+| `src/tables.rs` | CJK 幅対応の表抽出・描画 |
+| `src/mermaid.rs` | Mermaid → SVG → PNG、テーマ、キャッシュ |
+| `src/images.rs` | 画像読み込み・リサイズ・SVG ラスタライズ・背景合成 |
+| `src/blocks.rs` | ANSI 半ブロック描画 |
+| `src/sixel.rs` | メディアンカット減色 + Sixel エンコーダ |
+| `src/kitty.rs` | Kitty graphics エンコーダ |
+| `src/iterm.rs` | iTerm2 inline image エンコーダ |
+| `src/term.rs` | 端末プローブ、能力判定、キャッシュ |
+| `src/selftest.rs` | Kitty の画像転送セルフテスト |
+| `src/pager.rs` | ページャ、見出しジャンプ |
+| `src/remote.rs` | リモート画像の取得とキャッシュ |
+| `src/update.rs` | リリース確認・自己更新 |
 
-**`kitty support: yes` なのに `kitty transfer: 失敗` の場合**
+## 性能
 
-端末は kitty graphics を話すが、画像データが届いていません。
-Windows の WezTerm から通常の `ssh`（`ssh.exe` → ConPTY 経由）で接続している場合、
-この経路では画像プロトコルが壊れることが知られています
-（[wezterm#8070](https://github.com/wezterm/wezterm/issues/8070)）。
-WezTerm 内蔵の SSH クライアントに切り替えると ConPTY を迂回でき、フル解像度で表示されます。
+Mermaid / SVG は固定 2048px ではなく、**実際の表示解像度に合わせてラスタライズ**します。
+半ブロック表示では横 `image_width * 4` px、Kitty / Sixel / iTerm2 では
+`image_width * セル幅 * --pixel-scale` px を目安にし、`--mermaid-width` を上限にします。
+2048px の PNG を毎回デコード・縮小していた従来のボトルネックを避けるためです。
 
-```powershell
-wezterm ssh oharato@192.168.242.100
-```
+この環境（Linux、デモ = Mermaid 4 図 + PNG/SVG 2 枚）での参考値:
 
-この場合 mdview は自動で半ブロック描画にフォールバックし、警告を 1 行表示します。
-OSC 1337（iTerm2 方式）が通るかは `mdview -r iterm <file>` で試せます。
+| ケース | Node 版 | Rust 版 |
+|---|---:|---:|
+| `-c`（テキストのみ） | 2.3 s | 0.01 s |
+| `-r blocks` 初回 | 2.3 s | 0.3 s |
+| `-r blocks` キャッシュ後 | 0.7 s | 0.1 s |
+| `-r kitty` 初回 | 2.6 s | 1.2 s |
+| `-r kitty` キャッシュ後 | 1.1 s | 0.6 s |
+| `-p` 最初のページ（kitty） | 2.5 s | 0.9 s |
+| `-p` 最初のページ（kitty・キャッシュ後） | 1.0 s | 0.4 s |
 
-**WezTerm の Sixel 誤広告について**
+数値は環境依存です。Mermaid のキャッシュは `~/.cache/mdview/mermaid/` にあります。
+キャッシュには表示用 PNG と、デコードを省くための raw RGBA (`.rgba`) が保存されます。
+`.rgba` は大きいため、必要ならキャッシュディレクトリごと削除してください（次回再生成されます）。
 
-WezTerm は DA1（`ESC [ c`）で「Sixel 対応」（属性 `4`）を返しますが、実際には
-Sixel を実装していません。mdview は XTVERSION（`CSI > 0 q`）で WezTerm を識別し、
-Sixel を使わないようにしています（使うと「真っ黒な空間」になるため）。
+ページャは画像のエンコードを **そのページを最初に表示するまで遅延**します。そのため
+最初のテキストページはすぐに出て、画像ページに移動したときに初めて画像を生成します。
 
-**画像が粗い（半ブロックになっている）場合**
-
-`kitty support` / `sixel support` が `no` です。`-r kitty` などで強制するか、
-多重化ツールのパススルー設定を確認してください。
-
-### 依存関係の管理
-
-- バージョンは **exact（例 `2.6.2`）で固定**し、`pnpm-lock.yaml` もコミットしています
-  （`.npmrc` の `save-exact=true` / `engine-strict=true`）
-- pnpm のバージョンは `packageManager`、Node.js は `engines` で固定・制約
-- 更新方法:
-  - 手動: `pnpm deps:outdated` で確認 → `pnpm deps:update`（`pnpm up --latest`）→ CI
-  - 自動: **Dependabot** が毎週月曜 9:00 (JST) に PR を作成
-    （minor/patch は 1 つの PR にまとめ、major は個別）
-- 脆弱性チェック: `pnpm deps:audit`
-
-#### mdcat（外部バイナリ）
-
-`mdcat` は npm 依存ではなく GitHub Releases のバイナリなので **Dependabot の対象外**です。
-そのため次のように管理しています。
-
-- バージョンは [`mdcat.version`](mdcat.version) に固定（例: `2.7.1`）。`install.sh` はこのバージョンを取得し、
-  `B2SUMS.txt`（BLAKE2b-512）でチェックサムを検証します
-- 週次の GitHub Actions（`.github/workflows/mdcat-version.yml`）が最新リリースと比較し、
-  差があれば **Issue を作成**して知らせます
-- 手動で更新する場合:
-
-  ```bash
-  echo "2.8.0" > mdcat.version
-  MDCAT_VERSION=2.8.0 MDCAT_FORCE=1 ./install.sh
-  pnpm test && mdview --check
-  ```
-
-- 一時的に別バージョンを使う: `MDCAT_VERSION=latest ./install.sh`（最新） /
-  `MDCAT_VERSION=2.6.0 ./install.sh`
-- インストール済みと推奨の差は `mdview --check` の `mdcat` 行と hint で確認できます
-- `@types/node` は Node.js の LTS メジャー（24）に合わせて固定しています
-  （Dependabot も major 更新は無視する設定）
-
-> pnpm 12 は既定で「公開から 24 時間以内のバージョンはインストールしない」という
-> supply-chain ポリシーを持っています。公開直後のバージョンを使う場合のみ
-> `pnpm-workspace.yaml` の `minimumReleaseAgeExclude` に追加してください。
-> Dependabot の PR が公開直後で CI に落ちる場合は、少し待って rebase すれば通ります。
-
-### 開発
+## テスト
 
 ```bash
-pnpm install
-pnpm test        # vitest（Sixel エンコーダ / Markdown 分解 / テーマ解決）
-pnpm typecheck
-pnpm build
+cargo fmt -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test
 ```
 
-## 制限
+テストは以下をカバーします。
 
-- Sixel は **Windows Terminal 1.22 以降**で利用できます。
-- tmux / screen 経由では、パススルー設定（`set -g allow-passthrough on` など）が無い限り
-  画像プロトコルは通りません。その場合は半ブロック描画になります。
-- Herdr は Kitty graphics を解釈して外側の端末へ転送します。`terminal.kitty_graphics = false`
-  にしている場合は半ブロックになります。外側の接続経路（ConPTY など）が画像を壊す場合は
-  Herdr 経由でも表示されません。Herdr は画像を raw RGBA (`f=32`) に再エンコードするため、
-  Herdr の client / server 両方の `kitty_graphics` 設定と、外側端末の Kitty graphics 対応を
-  確認してください（詳細は [`rust/README.md`](rust/README.md#herdr-経由で画像が出ないとき)）。
-- `less` などのページャと併用すると画像は出ません（mdcat 単体と同じ制約）。
-- 半ブロック描画は 1 セル 2 ピクセル相当のため、文字を含む複雑な図は粗くなります。
-  Sixel 対応端末での利用を推奨します。
-- Mermaid の対応範囲は Pele に準じます（Mermaid 12.1 相当）。描画できない記法は
-  コードブロックとしてそのまま表示されます。
-- 表は mdview 側で描画します（mdcat の表レンダラは CJK の表示幅を考慮しないため）。
-  セル内のインライン記法は太字・斜体・打ち消し線・コード・リンクのみ対応し、
-  折り返しは行いません（幅に収まらない場合は `…` で切り詰めます）。
+- Sixel の減色・RLE・実デコード
+- Kitty / iTerm2 のエスケープ列
+- Markdown の Mermaid・画像・表の抽出
+- CJK / 絵文字の表示幅、表の整列・切り詰め
+- 見出し・セクション抽出
+- ページャのページ分割
+- 端末応答のパース
+- Mermaid の SVG / PNG / キャッシュ
+- CLI の end-to-end（`tests/cli.rs`）
 
-## 類似ツール
+`mdcat` とのテキスト一致を確認するには、同じ桁数を指定してください。
 
-| ツール | できること | mdview との違い |
-|---|---|---|
-| [ink](https://github.com/borghei/ink) | Rust 製の TUI。画像・Mermaid（独自レンダラ）・表・数式・検索・テーマ・タブ | 高機能な TUI。本文は独自レンダラで描画。Mermaid は独自実装（Pele ではない） |
-| [presenterm](https://github.com/mfontanini/presenterm) | ターミナルでスライド。画像・Mermaid | 発表用途。Mermaid に mermaid-cli（Chrome）が必要 |
-| [glow](https://github.com/charmbracelet/glow) | 定番の Markdown ビューア（TUI） | 画像・Mermaid は非対応 |
-| [mdcat](https://github.com/swsnr/mdcat) | 高品質なテキスト描画。画像は kitty/iTerm2/Terminology のみ | Mermaid 非対応、表の CJK 幅に未対応。mdview はこの上に機能を足しています |
+```bash
+mdview --dump-text -w 100 examples/demo.md > /tmp/rs.txt
+mdcat --ansi --columns 100 examples/demo.md > /tmp/mdcat.txt
+diff -u /tmp/mdcat.txt /tmp/rs.txt
+```
 
-mdview は「**mdcat の見た目を保ったまま、画像と Mermaid を足す**」ことに絞ったツールです。
-もっと多機能な TUI（検索・テーマ・数式）が欲しい場合は ink、スライドなら presenterm が候補です。
+`--dump-text` はデバッグ用の隠しオプションです。
 
-> ink 0.13.0 で同じデモを表示して比較した範囲では、表の CJK 揃えは両方とも正しく、
-> ink は `--plain` でも Mermaid をテキストアートとして描画できました（mdview は
-> 画像プロトコルが使えない環境では半ブロック描画になります）。
-> 画像パスの解決は ink が CWD 基準、mdview が Markdown ファイル基準です。
->
-> なお ink の kitty レンダラは Unicode placeholder 方式（`ratatui-image`）のため、
-> これを実装していない WezTerm では画像が `□` の並びになります。その場合は
-> `ink --image-protocol iterm2` を指定してください（WezTerm は iTerm2 方式に対応）。
-> mdview は直接配置のみを使うので、WezTerm でもそのまま表示されます。
+## リリース
+
+`.github/workflows/rust.yml` が fmt / clippy / test / release build を実行します。
+タグ `v*` を push すると `.github/workflows/rust-release.yml` が Linux バイナリを作成し、
+以下の asset を GitHub Releases に添付します。
+
+- `mdview-x86_64-unknown-linux-gnu`
+- `mdview-aarch64-unknown-linux-gnu`
+- `SHA256SUMS`
+
+`mdview --update` はこの asset をダウンロードし、`SHA256SUMS` を検証して
+実行中のバイナリを置き換えます。
+
+## Herdr 経由で画像が出ないとき
+
+Herdr のペイン内で `mdview --check` が `kitty support: yes` / `kitty transfer: ok` /
+`renderer: kitty` になっているのに画像が出ない場合、mdview は Herdr に Kitty graphics を
+正しく渡しています。Herdr は受け取った画像を**外側の端末向けに raw RGBA (`f=32`) へ
+再エンコード**して転送するため、次のどれかが原因です。
+
+1. **Herdr の client / server 両方で `kitty_graphics` が有効になっていない**
+   - 新しい設定: `[terminal] kitty_graphics = true`
+   - 旧設定: `[experimental] kitty_graphics = true`
+   - リモートセッションでは **server 側がパース**、**local client 側が外側端末への出力**を
+     制御します。両方に設定し、Herdr server / client を再起動または再接続してください。
+2. **外側の端末が Herdr の raw RGBA 出力に対応していない**
+   - Windows Terminal / VSCode の統合ターミナルなど、Kitty graphics 自体に対応しない端末では
+     Herdr 経由の画像は表示できません。**Windows Terminal + Herdr では画像が出ません**
+     （WezTerm など Kitty graphics 対応端末では表示されます）。その場合は Herdr を使わず、
+     Windows Terminal の Sixel 対応で直接 `mdview` を実行してください。
+3. **Herdr のバージョンが古い**
+   - `herdr --version` と `herdr config check` を確認してください。
+
+切り分け:
+
+```bash
+# まず画像 1 枚だけの短い文書で確認
+printf '# test\n\n![](examples/sample.png)\n' > /tmp/herdr-test.md
+mdview /tmp/herdr-test.md
+
+# Herdr 内で別の Kitty 画像ツールが表示できるか
+kitten icat examples/sample.png   # kitty
+chafa --format kitty examples/sample.png
+
+# 長い文書でスクロール後に消える場合はページャを使う
+mdview -p examples/demo.md
+
+# mdview 側のフォールバック（画像プロトコルを使わない）
+mdview -r blocks examples/demo.md
+```
+
+短い文書では表示され、長い文書のスクロールバックで消える場合は、Herdr の
+表示範囲の問題です。`mdview -p` を使うと画像を含むページをその場で表示できます。
+
+`kitten icat` / `chafa` も表示できない場合は mdview ではなく Herdr と外側端末の経路の問題です。
+Herdr の設定を変えた後は `herdr server stop` → `herdr` で再起動してください。
+
+### Mermaid レンダラのローカルパッチ
+
+`mermaid-rs-renderer 0.3.1` は `vendor/mermaid-rs-renderer/` に vendoring し、次の 2 点だけ
+パッチを当てています（[`PATCHES.md`](vendor/mermaid-rs-renderer/PATCHES.md)）。
+
+- シーケンス図のラベル折り返し上限を 14 → 40 文字へ
+- 参加者のライフラインを `stroke-width: 0.5` → `1.0` へ
+
+上流の `LayoutConfig` では変更できないため、`Cargo.toml` の `[patch.crates-io]` で
+ローカルパスを参照しています。上流で修正されたら vendoring を外してください。
+
+## 既知の制限・旧 Node 版との違い
+
+- **Mermaid の見た目**: `mermaid-rs-renderer 0.3.1` は開発初期の Pure Rust 実装です。
+  flowchart / sequence / pie は実用的ですが、class diagram のレイアウトは Pele と
+  一致しません。Mermaid の完全な再現が必要な場合は、Pele を QuickJS 等に埋め込む
+  方式に切り替える必要があります。
+- **画像形式**: `sharp`/libvips ほど多くの形式は扱えません。現在は PNG / JPEG / GIF /
+  WebP / BMP / TIFF / SVG です。AVIF / HEIC などは未対応です。
+- **Linux のみ**: 端末プローブが `/dev/tty` と termios を使うため、Windows ネイティブは
+  未対応です。
+- **`MDVIEW_MDCAT` は不要**: mdcat はライブラリとして組み込まれています。
+  外部バイナリのバージョン確認（`--check` の mdcat 行）もありません。
+- **表のインライン記法**: 太字・斜体・打ち消し線・コード・リンクに対応。
+  折り返しはせず、幅に収まらない場合は `…` で切り詰めます。
+- **Sixel**: Windows Terminal 1.22+ / xterm など。WezTerm は DA1 で Sixel 対応を
+  返しますが実装していないため、WezTerm では Sixel を使いません。
+- **tmux / screen**: パススルー設定がない限り画像プロトコルは通りません。
+  その場合は半ブロックにフォールバックします。
 
 ## ライセンス
 
-MIT
+MIT。依存クレートのライセンスは `cargo tree` / `cargo deny` などで確認してください。
+`pulldown-cmark-mdcat` は MPL-2.0 AND Apache-2.0、`resvg` は MPL-2.0 です。

@@ -1,4 +1,4 @@
-//! mdview-rs: a single Rust binary Markdown viewer.
+//! mdview: a single Rust binary Markdown viewer.
 //!
 //! Text rendering uses `pulldown-cmark-mdcat` (the library behind mdcat),
 //! Mermaid uses `mermaid-rs-renderer`, and images are drawn with Kitty,

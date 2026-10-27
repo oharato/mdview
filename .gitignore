@@ -1,13 +1,7 @@
-# 依存関係
-node_modules/
-dist/
-coverage/
-*.tsbuildinfo
+# Rust build outputs
+target/
+out/
 
 # OS / エディタ
 .DS_Store
 *.swp
-
-# Rust
-rust/target/
-rust/out/
