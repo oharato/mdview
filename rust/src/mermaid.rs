@@ -90,7 +90,7 @@ pub fn render_png(code: &str, theme: MermaidTheme, width: u32) -> Result<RgbaIma
     images::rasterize_svg(&svg, width)
 }
 
-const CACHE_VERSION: &str = "2";
+const CACHE_VERSION: &str = "3";
 
 pub fn cache_path(code: &str, theme: MermaidTheme, width: u32) -> PathBuf {
     let key = short_hash(&[CACHE_VERSION, code, theme.as_str(), &width.to_string()]);
