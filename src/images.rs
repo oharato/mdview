@@ -103,10 +103,58 @@ fn system_fonts() -> Arc<resvg::usvg::fontdb::Database> {
             database.load_system_fonts();
             // resvg resolves generic CSS families through fontdb. Without
             // these mappings an SVG using `font-family="sans-serif"` renders
-            // no text at all.
-            database.set_sans_serif_family("Noto Sans CJK JP");
-            database.set_serif_family("Noto Serif CJK JP");
-            database.set_monospace_family("DejaVu Sans Mono");
+            // no text at all. Pick a family that is actually installed so
+            // this also works on machines without Noto CJK (e.g. CI).
+            fn pick(
+                database: &resvg::usvg::fontdb::Database,
+                candidates: &[&'static str],
+            ) -> Option<&'static str> {
+                candidates.iter().copied().find(|name| {
+                    database
+                        .query(&resvg::usvg::fontdb::Query {
+                            families: &[resvg::usvg::fontdb::Family::Name(name)],
+                            ..Default::default()
+                        })
+                        .is_some()
+                })
+            }
+            if let Some(family) = pick(
+                &database,
+                &[
+                    "Noto Sans CJK JP",
+                    "Noto Sans CJK SC",
+                    "Noto Sans JP",
+                    "Noto Sans",
+                    "DejaVu Sans",
+                    "Liberation Sans",
+                    "Arial",
+                ],
+            ) {
+                database.set_sans_serif_family(family);
+            }
+            if let Some(family) = pick(
+                &database,
+                &[
+                    "Noto Serif CJK JP",
+                    "Noto Serif",
+                    "DejaVu Serif",
+                    "Liberation Serif",
+                    "Times New Roman",
+                ],
+            ) {
+                database.set_serif_family(family);
+            }
+            if let Some(family) = pick(
+                &database,
+                &[
+                    "DejaVu Sans Mono",
+                    "Liberation Mono",
+                    "Noto Sans Mono CJK JP",
+                    "Noto Sans Mono",
+                ],
+            ) {
+                database.set_monospace_family(family);
+            }
             Arc::new(database)
         })
         .clone()
