@@ -17,10 +17,14 @@ use regex::Regex;
 use crate::sections::Heading;
 use crate::tables::display_width;
 
-#[derive(Debug, Clone)]
+pub enum ImagePayload {
+    Ready(Vec<u8>),
+    Lazy(Box<dyn FnOnce() -> Vec<u8>>),
+}
+
 pub enum Block {
     Text(Vec<String>),
-    Image { rows: u16, payload: Vec<u8> },
+    Image { rows: u16, payload: ImagePayload },
 }
 
 #[derive(Debug, Clone)]
@@ -32,7 +36,7 @@ pub struct HeadingMark {
     pub line: usize,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct BufferSink {
     pub blocks: Vec<Block>,
     pub marks: Vec<HeadingMark>,
@@ -77,7 +81,17 @@ impl BufferSink {
     }
 
     pub fn push_image(&mut self, rows: u16, payload: Vec<u8>) {
-        self.blocks.push(Block::Image { rows, payload });
+        self.blocks.push(Block::Image {
+            rows,
+            payload: ImagePayload::Ready(payload),
+        });
+    }
+
+    pub fn push_lazy_image(&mut self, rows: u16, render: Box<dyn FnOnce() -> Vec<u8>>) {
+        self.blocks.push(Block::Image {
+            rows,
+            payload: ImagePayload::Lazy(render),
+        });
     }
 }
 
@@ -187,7 +201,12 @@ fn current_heading(heading_pages: &[(HeadingMark, usize)], page: usize) -> Optio
     found
 }
 
-pub fn run_pager(blocks: &[Block], marks: &[HeadingMark], rows: u16, columns: u16) -> Result<()> {
+pub fn run_pager(
+    blocks: &mut [Block],
+    marks: &[HeadingMark],
+    rows: u16,
+    columns: u16,
+) -> Result<()> {
     let mut rows = rows.max(5);
     let mut columns = columns.max(20);
     let mut pages = paginate(blocks, rows - 1);
@@ -366,7 +385,7 @@ fn is_quit(key: &KeyEvent) -> bool {
 
 fn draw_page(
     stdout: &mut impl Write,
-    blocks: &[Block],
+    blocks: &mut [Block],
     pages: &[Vec<PageEntry>],
     index: usize,
     rows: u16,
@@ -388,9 +407,17 @@ fn draw_page(
                     row = row.saturating_add(1);
                 }
                 PageEntry::Image { block, rows } => {
-                    if let Some(Block::Image { payload, .. }) = blocks.get(*block) {
-                        queue!(stdout, MoveTo(0, row))?;
-                        stdout.write_all(payload)?;
+                    if let Some(Block::Image { payload, .. }) = blocks.get_mut(*block) {
+                        if matches!(payload, ImagePayload::Lazy(_)) {
+                            let old = std::mem::replace(payload, ImagePayload::Ready(Vec::new()));
+                            if let ImagePayload::Lazy(render) = old {
+                                *payload = ImagePayload::Ready(render());
+                            }
+                        }
+                        if let ImagePayload::Ready(bytes) = payload {
+                            queue!(stdout, MoveTo(0, row))?;
+                            stdout.write_all(bytes)?;
+                        }
                     }
                     row = row.saturating_add(*rows);
                 }
@@ -479,7 +506,7 @@ mod tests {
             Block::Text(vec!["a".into(), "b".into(), "c".into()]),
             Block::Image {
                 rows: 3,
-                payload: vec![],
+                payload: ImagePayload::Ready(vec![]),
             },
             Block::Text(vec!["d".into()]),
         ];

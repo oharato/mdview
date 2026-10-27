@@ -157,6 +157,7 @@ struct Args {
     dump_text: bool,
 }
 
+#[derive(Clone)]
 struct Options {
     width: u16,
     image_width: u32,
@@ -215,9 +216,12 @@ fn detect_light_background() -> bool {
         .unwrap_or(false)
 }
 
+type LazyImage = Box<dyn FnOnce() -> Vec<u8>>;
+
 trait Sink {
     fn text(&mut self, body: &str) -> Result<()>;
     fn image(&mut self, rows: u16, payload: Vec<u8>) -> Result<()>;
+    fn lazy_image(&mut self, rows: u16, render: LazyImage) -> Result<()>;
 }
 
 struct StreamSink;
@@ -229,6 +233,10 @@ impl Sink for StreamSink {
 
     fn image(&mut self, _rows: u16, payload: Vec<u8>) -> Result<()> {
         write_out(&payload)
+    }
+
+    fn lazy_image(&mut self, _rows: u16, render: LazyImage) -> Result<()> {
+        write_out(&render())
     }
 }
 
@@ -242,6 +250,11 @@ impl Sink for PagerSink {
 
     fn image(&mut self, rows: u16, payload: Vec<u8>) -> Result<()> {
         self.0.push_image(rows, payload);
+        Ok(())
+    }
+
+    fn lazy_image(&mut self, rows: u16, render: LazyImage) -> Result<()> {
+        self.0.push_lazy_image(rows, render);
         Ok(())
     }
 }
@@ -571,6 +584,11 @@ fn render_mermaid(
                     started.elapsed().as_secs_f64() * 1000.0
                 );
             }
+            if page_mode {
+                if let Some((rows, render)) = defer_image(&image, "mermaid", options) {
+                    return sink.lazy_image(rows, render);
+                }
+            }
             draw_image(&image, "mermaid", options, sink, page_mode)
         }
         Err(error) => {
@@ -634,7 +652,141 @@ fn render_image(
             started.elapsed().as_secs_f64() * 1000.0
         );
     }
+    if page_mode {
+        if let Some((rows, render)) = defer_image(&image, &block.alt, options) {
+            return sink.lazy_image(rows, render);
+        }
+    }
     draw_image(&image, &block.alt, options, sink, page_mode)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ProtocolPlan {
+    kind: ImageRendererKind,
+    width: u32,
+    height: u32,
+    rows: u16,
+    cell: (u32, u32),
+}
+
+fn plan_protocol_image(
+    image: &image::RgbaImage,
+    options: &Options,
+    renderer: Renderer,
+) -> Option<ProtocolPlan> {
+    let kind = renderer.image_kind();
+    if !matches!(
+        kind,
+        ImageRendererKind::Kitty | ImageRendererKind::Sixel | ImageRendererKind::Iterm
+    ) {
+        return None;
+    }
+
+    let (_, rows) = term::terminal_size();
+    let cell = term::cell_pixels();
+    let window = term::window_pixels();
+    let max_rows = images::max_image_rows(rows, options.image_max_height);
+    let (width, height) = images::plan_display_size(
+        image.width(),
+        image.height(),
+        options.image_width,
+        cell,
+        window,
+        options.pixel_scale,
+        options.upscale,
+        max_rows,
+    );
+    let rows_cells = ((height as f64) / cell.1.max(1) as f64).ceil().max(1.0) as u16;
+    Some(ProtocolPlan {
+        kind,
+        width,
+        height,
+        rows: rows_cells,
+        cell,
+    })
+}
+
+fn encode_protocol_payload(
+    resized: &image::RgbaImage,
+    options: &Options,
+    plan: ProtocolPlan,
+    alt: &str,
+    page_mode: bool,
+) -> Vec<u8> {
+    match plan.kind {
+        ImageRendererKind::Sixel => {
+            let mut payload = sixel::encode_sixel(resized, options.image_colors);
+            if !page_mode {
+                payload.push(b'\n');
+            }
+            payload
+        }
+        ImageRendererKind::Kitty => {
+            let png = images::to_png(resized, image::codecs::png::CompressionType::Fast)
+                .expect("PNG encoding cannot fail in memory");
+            let cols_cells = ((resized.width() as f64) / plan.cell.0.max(1) as f64)
+                .round()
+                .max(1.0) as u16;
+            let encoded = kitty::encode_kitty(
+                &png,
+                kitty::KittyPlacement {
+                    cols: Some(cols_cells as u32),
+                    rows: Some(plan.rows as u32),
+                    image_id: Some(next_kitty_image_id()),
+                    hold_cursor: true,
+                },
+            );
+            if page_mode {
+                encoded
+            } else {
+                let mut payload = Vec::new();
+                payload.extend_from_slice(b"\r");
+                payload.extend_from_slice("\n".repeat(plan.rows as usize).as_bytes());
+                payload.extend_from_slice(format!("\x1b[{}A", plan.rows).as_bytes());
+                payload.extend_from_slice(&encoded);
+                payload.extend_from_slice(format!("\x1b[{}B", plan.rows).as_bytes());
+                payload
+            }
+        }
+        ImageRendererKind::Iterm => iterm::encode_iterm2(
+            &images::to_png(resized, image::codecs::png::CompressionType::Fast)
+                .expect("PNG encoding cannot fail in memory"),
+            iterm::Iterm2Options {
+                name: Some(alt),
+                width_px: Some(resized.width()),
+                height_px: Some(resized.height()),
+            },
+        ),
+        ImageRendererKind::Blocks => unreachable!(),
+    }
+}
+
+/// Prepare a pager image without encoding its payload yet. The payload is
+/// produced only when the page containing the image is first drawn.
+fn defer_image(image: &image::RgbaImage, alt: &str, options: &Options) -> Option<(u16, LazyImage)> {
+    let renderer = choose_renderer(options);
+    let plan = plan_protocol_image(image, options, renderer)?;
+    let detected_background = term::terminal_background();
+    let image = match images::resolve_background(
+        options.image_bg.as_str(),
+        options.light,
+        plan.kind,
+        detected_background,
+    ) {
+        Some(background) => images::flatten_image(image, background),
+        None => image.clone(),
+    };
+    let options = options.clone();
+    let alt = alt.to_string();
+    let width = plan.width;
+    let height = plan.height;
+    Some((
+        plan.rows,
+        Box::new(move || {
+            let resized = images::resize_image(&image, width, height);
+            encode_protocol_payload(&resized, &options, plan, &alt, true)
+        }),
+    ))
 }
 
 fn draw_image(
@@ -656,82 +808,13 @@ fn draw_image(
         None => image.clone(),
     };
 
-    let (_, rows) = term::terminal_size();
-    let cell = term::cell_pixels();
-    let window = term::window_pixels();
-    let max_rows = images::max_image_rows(rows, options.image_max_height);
-    let kind = renderer.image_kind();
-
-    if matches!(
-        kind,
-        ImageRendererKind::Kitty | ImageRendererKind::Sixel | ImageRendererKind::Iterm
-    ) {
-        let (width, height) = images::plan_display_size(
-            image.width(),
-            image.height(),
-            options.image_width,
-            cell,
-            window,
-            options.pixel_scale,
-            options.upscale,
-            max_rows,
-        );
-        let resized = images::resize_image(&image, width, height);
-        let rows_cells = ((resized.height() as f64) / cell.1.max(1) as f64)
-            .ceil()
-            .max(1.0) as u16;
-
-        match kind {
-            ImageRendererKind::Sixel => {
-                let palette = options.image_colors;
-                let payload = sixel::encode_sixel(&resized, palette);
-                let mut payload = payload;
-                if !page_mode {
-                    payload.push(b'\n');
-                }
-                sink.image(rows_cells, payload)?;
-            }
-            ImageRendererKind::Kitty => {
-                let png = images::to_png(&resized, image::codecs::png::CompressionType::Best)?;
-                let cols_cells = ((resized.width() as f64) / cell.0.max(1) as f64)
-                    .round()
-                    .max(1.0) as u16;
-                let encoded = kitty::encode_kitty(
-                    &png,
-                    kitty::KittyPlacement {
-                        cols: Some(cols_cells as u32),
-                        rows: Some(rows_cells as u32),
-                        image_id: Some(next_kitty_image_id()),
-                        hold_cursor: true,
-                    },
-                );
-                let payload = if page_mode {
-                    encoded
-                } else {
-                    let mut payload = Vec::new();
-                    payload.extend_from_slice(b"\r");
-                    payload.extend_from_slice("\n".repeat(rows_cells as usize).as_bytes());
-                    payload.extend_from_slice(format!("\x1b[{}A", rows_cells).as_bytes());
-                    payload.extend_from_slice(&encoded);
-                    payload.extend_from_slice(format!("\x1b[{}B", rows_cells).as_bytes());
-                    payload
-                };
-                sink.image(rows_cells, payload)?;
-            }
-            ImageRendererKind::Iterm => {
-                let payload = iterm::encode_iterm2(
-                    &images::to_png(&resized, image::codecs::png::CompressionType::Best)?,
-                    iterm::Iterm2Options {
-                        name: Some(alt),
-                        width_px: Some(resized.width()),
-                        height_px: Some(resized.height()),
-                    },
-                );
-                sink.image(rows_cells, payload)?;
-            }
-            ImageRendererKind::Blocks => unreachable!(),
-        }
+    if let Some(plan) = plan_protocol_image(&image, options, renderer) {
+        let resized = images::resize_image(&image, plan.width, plan.height);
+        let payload = encode_protocol_payload(&resized, options, plan, alt, page_mode);
+        sink.image(plan.rows, payload)?;
     } else {
+        let (_, rows) = term::terminal_size();
+        let max_rows = images::max_image_rows(rows, options.image_max_height);
         let plan =
             blocks::plan_half_blocks(image.width(), image.height(), options.image_width, max_rows);
         let resized = images::resize_image(&image, plan.cols, plan.rows * 2);
@@ -878,9 +961,9 @@ fn main() -> Result<()> {
         process_document(&markdown, &base_dir, &options, &mut sink, use_pager)?;
     }
 
-    if let SinkKind::Pager(pager_sink) = sink {
+    if let SinkKind::Pager(mut pager_sink) = sink {
         let (columns, rows) = term::terminal_size();
-        pager::run_pager(&pager_sink.0.blocks, &pager_sink.0.marks, rows, columns)?;
+        pager::run_pager(&mut pager_sink.0.blocks, &pager_sink.0.marks, rows, columns)?;
     }
 
     Ok(())
@@ -903,6 +986,13 @@ impl Sink for SinkKind {
         match self {
             Self::Stream(sink) => sink.image(rows, payload),
             Self::Pager(sink) => sink.image(rows, payload),
+        }
+    }
+
+    fn lazy_image(&mut self, rows: u16, render: LazyImage) -> Result<()> {
+        match self {
+            Self::Stream(sink) => sink.lazy_image(rows, render),
+            Self::Pager(sink) => sink.lazy_image(rows, render),
         }
     }
 }

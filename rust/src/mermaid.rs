@@ -4,7 +4,7 @@
 //! `mermaid-rs-renderer`. The theme background is forced transparent so the
 //! terminal background shows through.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use image::RgbaImage;
@@ -97,6 +97,29 @@ pub fn cache_path(code: &str, theme: MermaidTheme, width: u32) -> PathBuf {
     mermaid_cache_dir().join(format!("{key}.png"))
 }
 
+fn raw_cache_path(code: &str, theme: MermaidTheme, width: u32) -> PathBuf {
+    let key = short_hash(&[CACHE_VERSION, code, theme.as_str(), &width.to_string()]);
+    mermaid_cache_dir().join(format!("{key}.rgba"))
+}
+
+fn write_raw_cache(image: &RgbaImage, path: &Path) -> Result<()> {
+    let mut data = Vec::with_capacity(8 + image.as_raw().len());
+    data.extend_from_slice(&image.width().to_le_bytes());
+    data.extend_from_slice(&image.height().to_le_bytes());
+    data.extend_from_slice(image.as_raw());
+    std::fs::write(path, data).with_context(|| format!("cannot write {}", path.display()))
+}
+
+fn read_raw_cache(path: &Path) -> Option<RgbaImage> {
+    let data = std::fs::read(path).ok()?;
+    if data.len() < 8 {
+        return None;
+    }
+    let width = u32::from_le_bytes(data[0..4].try_into().ok()?);
+    let height = u32::from_le_bytes(data[4..8].try_into().ok()?);
+    RgbaImage::from_raw(width, height, data[8..].to_vec())
+}
+
 /// Return a cached PNG path, rendering it first if necessary.
 pub fn render_cached(code: &str, theme: MermaidTheme, width: u32) -> Result<PathBuf> {
     let path = cache_path(code, theme, width);
@@ -106,13 +129,25 @@ pub fn render_cached(code: &str, theme: MermaidTheme, width: u32) -> Result<Path
     ensure_dir(&mermaid_cache_dir())?;
     let image = render_png(code, theme, width)?;
     images::save_png(&image, &path)?;
+    let _ = write_raw_cache(&image, &raw_cache_path(code, theme, width));
     Ok(path)
 }
 
-/// Load a cached PNG, or render and cache it.
+/// Load a cached image, or render and cache it.
+///
+/// A raw RGBA cache is used alongside the PNG cache. Decoding a 1000px-wide
+/// PNG with the pure-Rust `image` decoder is surprisingly expensive; the raw
+/// file turns warm runs into a plain `fs::read` plus `RgbaImage::from_raw`.
 pub fn load_cached(code: &str, theme: MermaidTheme, width: u32) -> Result<RgbaImage> {
-    let path = render_cached(code, theme, width)?;
-    images::from_png(&std::fs::read(&path)?)
+    let raw_path = raw_cache_path(code, theme, width);
+    if let Some(image) = read_raw_cache(&raw_path) {
+        return Ok(image);
+    }
+
+    let png_path = render_cached(code, theme, width)?;
+    let image = images::from_png(&std::fs::read(&png_path)?)?;
+    let _ = write_raw_cache(&image, &raw_path);
+    Ok(image)
 }
 
 #[cfg(test)]
@@ -145,10 +180,16 @@ mod tests {
 
     #[test]
     fn renders_and_caches_png() {
-        let code = "flowchart LR; A-->B";
-        let path = render_cached(code, MermaidTheme::Dark, 512).expect("cache");
-        assert!(path.exists());
-        let image = images::from_png(&std::fs::read(path).expect("png")).expect("decode");
+        let code = format!("flowchart LR; A-->B{}", std::process::id());
+        let png = cache_path(&code, MermaidTheme::Dark, 512);
+        let raw = raw_cache_path(&code, MermaidTheme::Dark, 512);
+        let _ = std::fs::remove_file(&png);
+        let _ = std::fs::remove_file(&raw);
+        let image = load_cached(&code, MermaidTheme::Dark, 512).expect("cache");
         assert!(image.width() == 512);
+        assert!(png.exists());
+        assert!(raw.exists());
+        let _ = std::fs::remove_file(&png);
+        let _ = std::fs::remove_file(&raw);
     }
 }

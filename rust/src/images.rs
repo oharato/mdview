@@ -115,7 +115,12 @@ fn system_fonts() -> Arc<resvg::usvg::fontdb::Database> {
 /// Encode an RGBA image as PNG.
 pub fn to_png(image: &RgbaImage, compression: CompressionType) -> Result<Vec<u8>> {
     let mut output = Vec::new();
-    let encoder = PngEncoder::new_with_quality(&mut output, compression, FilterType::Adaptive);
+    let filter = if matches!(compression, CompressionType::Fast) {
+        FilterType::Sub
+    } else {
+        FilterType::Adaptive
+    };
+    let encoder = PngEncoder::new_with_quality(&mut output, compression, filter);
     encoder
         .write_image(
             image.as_raw(),
@@ -273,7 +278,7 @@ pub fn plan_display_size(
 
 /// Save an RGBA image as PNG.
 pub fn save_png(image: &RgbaImage, path: &Path) -> Result<()> {
-    let png = to_png(image, CompressionType::Best)?;
+    let png = to_png(image, CompressionType::Fast)?;
     std::fs::write(path, png).with_context(|| format!("failed to write PNG: {}", path.display()))
 }
 

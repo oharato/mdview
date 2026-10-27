@@ -114,9 +114,10 @@ pub fn parse_probe(raw: &str) -> ProbeResult {
 }
 
 fn is_complete(raw: &str) -> bool {
+    // CSI 14t (window pixels) is optional: many terminals never answer it.
+    // Requiring it made every probe wait for the full timeout.
     DA1_RE.is_match(raw)
         && CELL_RE.is_match(raw)
-        && WINDOW_RE.is_match(raw)
         && raw.contains("_G")
         && parse_kitty_self_test(raw)
 }
