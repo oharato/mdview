@@ -29,6 +29,8 @@ updates:
     ignore:
       # 2.10 以降は別メンテナのフォーク。公式 2.9.0 に固定する。
       - dependency-name: "pulldown-cmark-mdcat"
+      # pulldown-cmark-mdcat 2.9.0 が 0.12 系を要求するため直接更新しない
+      - dependency-name: "pulldown-cmark"
       # vendored patch (see vendor/mermaid-rs-renderer/PATCHES.md)
       - dependency-name: "mermaid-rs-renderer"
     groups:
