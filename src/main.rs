@@ -68,11 +68,11 @@ struct Args {
     #[arg(value_name = "FILE")]
     files: Vec<PathBuf>,
 
-    /// Text width in columns (default: terminal width, max 120).
+    /// Text width in columns (default: min(terminal width, 120); clamped to 1..400).
     #[arg(short = 'w', long)]
     width: Option<u16>,
 
-    /// Image/diagram width in columns (default: terminal width - 2).
+    /// Maximum image/diagram width in columns (default: terminal width - 2, clamped to 10..200; explicit: 1..400).
     #[arg(short = 'i', long = "image-width")]
     image_width: Option<u32>,
 
@@ -96,15 +96,15 @@ struct Args {
     #[arg(long = "image-bg", default_value = "auto")]
     image_bg: String,
 
-    /// Multiply the cell size when the terminal cannot report it (HiDPI: 2).
+    /// Scale target image width and rasterization resolution (default: 1; HiDPI: 2).
     #[arg(long = "pixel-scale", default_value_t = 1.0)]
     pixel_scale: f32,
 
-    /// Upscale small images to the requested width (up to 3x; disabled by default).
+    /// Upscale small images for Kitty/Sixel/iTerm2 (up to 3x; disabled by default).
     #[arg(long)]
     upscale: bool,
 
-    /// Disable upscaling (the default).
+    /// Disable upscaling (the default; takes precedence over --upscale).
     #[arg(long = "no-upscale")]
     no_upscale: bool,
 
