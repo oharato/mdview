@@ -175,14 +175,14 @@ pub fn resolve_all_label_positions(
 
     // Step 1: Resolve center labels (label_anchor).
     //
-    // Flowchart center labels may need to stack outside the initial routing
+    // Flowchart and ER labels may need space outside the initial routing
     // rectangle, especially for multiple long parallel edge labels.  A graph
     // bounds finalization pass runs after label placement and grows/translates
     // the layout to include labels, so do not clamp flowchart center-label
     // candidates to the pre-label bounds here.  Endpoint labels remain bounded
     // because they are visually tied to node sides and do not benefit from
     // expanding the canvas.
-    let center_bounds = if layout.kind == DiagramKind::Flowchart {
+    let center_bounds = if matches!(layout.kind, DiagramKind::Flowchart | DiagramKind::Er) {
         None
     } else {
         bounds
@@ -322,13 +322,10 @@ fn resolve_center_labels(
             rect
         };
         edge.label_anchor = Some(clamped);
-        if kind == DiagramKind::Flowchart {
-            // Flowchart routing can seed labels with a reserved/preferred center so
-            // the path router avoids the label area. That seed is a good starting
-            // point, but it must not become an immovable constraint. Dense
-            // bidirectional graphs can produce overlapping reserved centers, and
-            // the flowchart-specific de-overlap pass below needs freedom to move
-            // them to nearby clear positions.
+        if matches!(kind, DiagramKind::Flowchart | DiagramKind::Er) {
+            // Router seeds are starting points, not fixed positions: ER seeds
+            // can overlap cardinality markers and dense flowchart seeds can
+            // overlap each other. Let collision avoidance move them.
             continue;
         }
         occupied_grid.insert(occupied.len(), &occupied_rect);
@@ -1344,6 +1341,7 @@ fn center_label_gap_limits(kind: DiagramKind) -> (f32, f32, f32) {
         ),
         DiagramKind::State => (1.7, 4.8, STATE_OWN_EDGE_HARD_MAX_GAP),
         DiagramKind::Class => (1.6, 4.6, CLASS_OWN_EDGE_HARD_MAX_GAP),
+        DiagramKind::Er => (8.0, 10.0, 12.0),
         _ => (1.5, 5.0, DEFAULT_OWN_EDGE_HARD_MAX_GAP),
     }
 }
@@ -1747,7 +1745,7 @@ fn tighten_center_label_gaps(
 fn center_label_attachment_cap(kind: DiagramKind) -> Option<f32> {
     match kind {
         DiagramKind::Flowchart | DiagramKind::Sequence | DiagramKind::ZenUML => None,
-        DiagramKind::Er => Some(12.0),
+        DiagramKind::Er => None,
         DiagramKind::Class => Some(10.0),
         DiagramKind::State => Some(11.0),
         _ => Some(12.0),
@@ -2986,7 +2984,7 @@ fn resolve_endpoint_labels(
     }
 
     let end_label_offset = match kind {
-        DiagramKind::Class => (theme.font_size * 0.18).max(2.8),
+        DiagramKind::Class => theme.font_size.max(14.0),
         DiagramKind::Flowchart => (theme.font_size * 0.75).max(9.0),
         _ => (theme.font_size * 0.6).max(8.0),
     };
@@ -3913,6 +3911,9 @@ fn label_penalties(
                     OWN_EDGE_GAP_OVER_WEIGHT_FLOWCHART,
                     OWN_EDGE_TOUCH_HARD_PENALTY_FLOWCHART,
                 )
+            } else if kind == DiagramKind::Er {
+                // Cardinality markers extend 6px to either side of the edge.
+                (8.0, 1.6, 0.65, 2.0)
             } else if kind == DiagramKind::Class {
                 (
                     OWN_EDGE_GAP_TARGET_CLASS,
@@ -4038,7 +4039,7 @@ fn edge_endpoint_label_position_with_avoid(
         _ => &[0.0, 0.8, -0.8, 1.6, -1.6],
     };
     let perp_steps: &[f32] = match kind {
-        DiagramKind::Class => &[0.0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.5, -1.5],
+        DiagramKind::Class => &[1.0, -1.0, 1.5, -1.5, 2.0, -2.0],
         _ => &[
             1.0, -1.0, 1.7, -1.7, 2.4, -2.4, 3.2, -3.2, 3.9, -3.9, 4.6, -4.6,
         ],

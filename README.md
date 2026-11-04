@@ -109,7 +109,7 @@ cat README.md | mdview
 | `--image-colours N` | Sixel の色数（既定: 256、2〜256） |
 | `--image-bg auto\|none\|#RRGGBB` | 透過画像の扱い。`auto` はアルファ対応方式なら透過を保持し、Sixel は背景色に合成 |
 | `--pixel-scale F` | セルサイズを取得できない端末での倍率（HiDPI なら 2） |
-| `--upscale / --no-upscale` | 小さい画像を端末幅まで拡大（既定: 有効・最大 3 倍） |
+| `--upscale / --no-upscale` | 小さい画像を端末幅まで拡大（既定: 無効。`--upscale` で有効・最大 3 倍） |
 | `--light` | 明るい背景の端末として扱う |
 | `-c, --no-colour` | 色・画像を無効化 |
 | `--mermaid-theme auto\|dark\|default\|neutral\|modern` | Mermaid の配色（既定: auto） |

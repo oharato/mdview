@@ -100,11 +100,11 @@ struct Args {
     #[arg(long = "pixel-scale", default_value_t = 1.0)]
     pixel_scale: f32,
 
-    /// Upscale small images to the requested width.
+    /// Upscale small images to the requested width (up to 3x; disabled by default).
     #[arg(long)]
     upscale: bool,
 
-    /// Disable upscaling.
+    /// Disable upscaling (the default).
     #[arg(long = "no-upscale")]
     no_upscale: bool,
 
@@ -183,7 +183,7 @@ impl Options {
             .image_width
             .unwrap_or_else(|| columns.saturating_sub(2).clamp(10, 200) as u32)
             .clamp(1, 400);
-        let upscale = args.upscale || !args.no_upscale;
+        let upscale = args.upscale && !args.no_upscale;
         Self {
             width,
             image_width,
@@ -993,6 +993,29 @@ impl Sink for SinkKind {
         match self {
             Self::Stream(sink) => sink.lazy_image(rows, render),
             Self::Pager(sink) => sink.lazy_image(rows, render),
+        }
+    }
+}
+
+#[cfg(test)]
+mod option_tests {
+    use super::*;
+
+    #[test]
+    fn image_upscaling_is_opt_in() {
+        for (flags, expected) in [
+            (vec!["mdview"], false),
+            (vec!["mdview", "--upscale"], true),
+            (vec!["mdview", "--no-upscale"], false),
+            (vec!["mdview", "--upscale", "--no-upscale"], false),
+            (vec!["mdview", "--no-upscale", "--upscale"], false),
+        ] {
+            let args = Args::try_parse_from(flags).unwrap();
+            let options = Options::resolve(&args);
+            assert_eq!(options.upscale, expected);
+            let size =
+                images::plan_display_size(240, 120, 80, (9, 18), None, 1.0, options.upscale, 40);
+            assert_eq!(size, if expected { (720, 360) } else { (240, 120) });
         }
     }
 }

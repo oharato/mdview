@@ -90,7 +90,7 @@ pub fn render_png(code: &str, theme: MermaidTheme, width: u32) -> Result<RgbaIma
     images::rasterize_svg(&svg, width)
 }
 
-const CACHE_VERSION: &str = "3";
+const CACHE_VERSION: &str = "4";
 
 pub fn cache_path(code: &str, theme: MermaidTheme, width: u32) -> PathBuf {
     let key = short_hash(&[CACHE_VERSION, code, theme.as_str(), &width.to_string()]);
@@ -167,6 +167,144 @@ mod tests {
         let svg = render_svg(code, MermaidTheme::Dark).expect("svg");
         assert!(svg.contains(">mdview README.md</tspan>"));
         assert!(svg.contains("stroke-width=\"1.0\""));
+    }
+
+    #[test]
+    fn class_multiplicity_stays_beside_the_edge() {
+        use mermaid_rs_renderer::{compute_layout, parse_mermaid_strict, LayoutConfig};
+        for direction in ["TB", "BT", "LR", "RL"] {
+            let code = "classDiagram\n  class Invoice {\n    +String number\n    +issue()\n  }\n  Company \"1\" --> \"*\" Invoice\n";
+            let code = code.replacen(
+                "classDiagram\n",
+                &format!("classDiagram\n direction {direction}\n"),
+                1,
+            );
+            let parsed = parse_mermaid_strict(&code).unwrap();
+            let theme = MermaidTheme::Dark.theme();
+            let layout = compute_layout(&parsed.graph, &theme, &LayoutConfig::default());
+            let edge = &layout.edges[0];
+
+            for (label, anchor) in [
+                (&edge.start_label, edge.start_label_anchor),
+                (&edge.end_label, edge.end_label_anchor),
+            ] {
+                let label = label.as_ref().unwrap();
+                let (x, y) = anchor.unwrap();
+                for pair in edge.points.windows(2) {
+                    if (pair[0].0 - pair[1].0).abs() < 0.01 {
+                        assert!(
+                            (x - pair[0].0).abs() > label.width / 2.0,
+                            "label overlaps vertical edge"
+                        );
+                    } else if (pair[0].1 - pair[1].1).abs() < 0.01 {
+                        assert!(
+                            (y - pair[0].1).abs() > label.height / 2.0,
+                            "label overlaps horizontal edge"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn er_crows_feet_point_away_from_nodes() {
+        let svg = render_svg(
+            "erDiagram\n  COMPANY ||--o{ INVOICE : has\n  INVOICE ||--|{ INVOICE_LINE : contains\n",
+            MermaidTheme::Dark,
+        )
+        .unwrap();
+        assert_eq!(svg.matches("M 8 0 L 0 -6 M 8 0 L 0 6").count(), 2);
+        assert!(svg.contains("cx=\"16\""));
+        // Downward edges need their end markers rotated back into the edge.
+        assert_eq!(svg.matches("rotate(270.00)").count(), 2);
+    }
+
+    #[test]
+    fn er_labels_clear_nodes_other_labels_and_cardinality_markers() {
+        use mermaid_rs_renderer::{compute_layout, parse_mermaid_strict, LayoutConfig};
+        let overlaps = |a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)| {
+            a.0 < b.2 - 0.01 && a.2 > b.0 + 0.01 && a.1 < b.3 - 0.01 && a.3 > b.1 + 0.01
+        };
+        for code in [
+            "erDiagram\n COMPANY ||--o{ INVOICE : has\n INVOICE ||--|{ INVOICE_LINE : contains",
+            "erDiagram\n A ||--o{ B : has\n A ||--o{ C : owns",
+            "erDiagram\n A ||--o{ B : first\n A ||--o{ B : second",
+        ] {
+            let parsed = parse_mermaid_strict(code).unwrap();
+            let layout = compute_layout(
+                &parsed.graph,
+                &MermaidTheme::Dark.theme(),
+                &LayoutConfig::default(),
+            );
+            let labels: Vec<_> = layout
+                .edges
+                .iter()
+                .filter_map(|edge| {
+                    let label = edge.label.as_ref()?;
+                    let (x, y) = edge.label_anchor?;
+                    Some((
+                        x - label.width / 2.0,
+                        y - label.height / 2.0,
+                        x + label.width / 2.0,
+                        y + label.height / 2.0,
+                    ))
+                })
+                .collect();
+            for (i, &rect) in labels.iter().enumerate() {
+                for node in layout.nodes.values() {
+                    assert!(
+                        !overlaps(
+                            rect,
+                            (node.x, node.y, node.x + node.width, node.y + node.height)
+                        ),
+                        "ER label overlaps node {}: {code}",
+                        node.id
+                    );
+                }
+                for &other in &labels[i + 1..] {
+                    assert!(!overlaps(rect, other), "ER labels overlap: {code}");
+                }
+                for edge in &layout.edges {
+                    for (decoration, points) in [
+                        (edge.start_decoration, (edge.points[0], edge.points[1])),
+                        (
+                            edge.end_decoration,
+                            (
+                                edge.points[edge.points.len() - 1],
+                                edge.points[edge.points.len() - 2],
+                            ),
+                        ),
+                    ] {
+                        if decoration.is_none() {
+                            continue;
+                        }
+                        let (p, next) = points;
+                        let length = (next.0 - p.0).hypot(next.1 - p.1);
+                        let (dx, dy) = ((next.0 - p.0) / length, (next.1 - p.1) / length);
+                        let center = (p.0 + dx * 10.0, p.1 + dy * 10.0);
+                        let label_center = ((rect.0 + rect.2) / 2.0, (rect.1 + rect.3) / 2.0);
+                        let half = ((rect.2 - rect.0) / 2.0, (rect.3 - rect.1) / 2.0);
+                        let separated = [(1.0, 0.0), (0.0, 1.0), (dx, dy), (-dy, dx)].iter().any(
+                            |&(ax, ay)| {
+                                let distance = ((label_center.0 - center.0) * ax
+                                    + (label_center.1 - center.1) * ay)
+                                    .abs();
+                                let label_radius = half.0 * ax.abs() + half.1 * ay.abs();
+                                let marker_radius = 10.0 * (dx * ax + dy * ay).abs()
+                                    + 6.0 * (-dy * ax + dx * ay).abs();
+                                distance >= label_radius + marker_radius - 0.01
+                            },
+                        );
+                        assert!(
+                            separated,
+                            "ER label overlaps cardinality marker on {}->{}: {code}",
+                            edge.from, edge.to
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]

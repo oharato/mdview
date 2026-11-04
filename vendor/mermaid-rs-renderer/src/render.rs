@@ -5916,6 +5916,18 @@ fn edge_decoration_svg(
     {
         angle += 180.0;
     }
+    // ER markers extend into the edge, away from either endpoint node.
+    if !at_start
+        && matches!(
+            decoration,
+            crate::ir::EdgeDecoration::CrowsFootOne
+                | crate::ir::EdgeDecoration::CrowsFootZeroOne
+                | crate::ir::EdgeDecoration::CrowsFootMany
+                | crate::ir::EdgeDecoration::CrowsFootZeroMany
+        )
+    {
+        angle += 180.0;
+    }
     let join = " stroke-linejoin=\"round\" stroke-linecap=\"round\"";
     let shape = match decoration {
         crate::ir::EdgeDecoration::Circle => format!(
@@ -5942,19 +5954,19 @@ fn edge_decoration_svg(
         }
         // Crow's foot notation for ER diagrams
         crate::ir::EdgeDecoration::CrowsFootOne => format!(
-            "<path d=\"M 0 -6 L 0 6 M 5 -6 L 5 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/>",
+            "<path d=\"M 4 -6 L 4 6 M 10 -6 L 10 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/>",
             stroke, stroke_width
         ),
         crate::ir::EdgeDecoration::CrowsFootZeroOne => format!(
-            "<g><circle cx=\"-4\" cy=\"0\" r=\"4\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/><path d=\"M 4 -6 L 4 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/></g>",
+            "<g><circle cx=\"16\" cy=\"0\" r=\"4\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/><path d=\"M 4 -6 L 4 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/></g>",
             stroke, stroke_width, stroke, stroke_width
         ),
         crate::ir::EdgeDecoration::CrowsFootMany => format!(
-            "<path d=\"M 0 -6 L 0 6 M 0 0 L 8 -6 M 0 0 L 8 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/>",
+            "<path d=\"M 12 -6 L 12 6 M 8 0 L 0 -6 M 8 0 L 0 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/>",
             stroke, stroke_width
         ),
         crate::ir::EdgeDecoration::CrowsFootZeroMany => format!(
-            "<g><circle cx=\"-4\" cy=\"0\" r=\"4\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/><path d=\"M 4 0 L 12 -6 M 4 0 L 12 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/></g>",
+            "<g><circle cx=\"16\" cy=\"0\" r=\"4\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/><path d=\"M 8 0 L 0 -6 M 8 0 L 0 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/></g>",
             stroke, stroke_width, stroke, stroke_width
         ),
     };
