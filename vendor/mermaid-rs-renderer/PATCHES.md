@@ -15,14 +15,13 @@ configured through the public `LayoutConfig` API.
 2. `src/render.rs`: draw sequence lifelines with `stroke-width="1.0"` instead
    of `0.5`. At terminal scale the 0.5px line often disappeared, making the
    vertical participant lines look missing.
-
 3. `src/render.rs`: orient ER cardinality markers into the relationship at both
    endpoints and keep all marker strokes outside node rectangles. Crow's feet
    now fan out toward the entity; circles and bars sit farther along the edge.
 4. `src/layout/label_placement.rs`: increase class multiplicity offsets and use
    candidates beside the edge so labels cannot be placed directly on its line.
    Let ER relationship labels move from router-seeded anchors using the existing
-   collision avoidance, with 8px clearance from their carrying edge to protect
+   collision avoidance, targeting 8px clearance from their carrying edge to protect
    cardinality markers. Allow the canvas to grow around these labels.
 
 Upstream checked at `3726ccbffe0e8032361eb9668694b24f77858060` (2026-09-07):
