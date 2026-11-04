@@ -166,7 +166,7 @@ fn find_asset<'a>(release: &'a LatestRelease, name: &str) -> Option<&'a ReleaseA
         })
 }
 
-fn download(url: &str) -> Option<Vec<u8>> {
+fn download(url: &str) -> Result<Vec<u8>> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(120)))
         .build()
@@ -174,14 +174,18 @@ fn download(url: &str) -> Option<Vec<u8>> {
     let mut response = agent
         .get(url)
         .header("User-Agent", format!("mdview/{}", current_version()))
-        .call()
-        .ok()?;
-    response.body_mut().read_to_vec().ok()
+        .call()?;
+    // Release binaries exceed ureq's default 10 MiB body limit.
+    Ok(response
+        .body_mut()
+        .with_config()
+        .limit(100 * 1024 * 1024)
+        .read_to_vec()?)
 }
 
 fn expected_checksum(release: &LatestRelease, asset_name: &str) -> Option<String> {
     let checksums = find_asset(release, "SHA256SUMS")?;
-    let text = String::from_utf8(download(&checksums.browser_download_url)?).ok()?;
+    let text = String::from_utf8(download(&checksums.browser_download_url).ok()?).ok()?;
     for line in text.lines() {
         let mut parts = line.split_whitespace();
         let hash = parts.next()?;
@@ -262,5 +266,36 @@ mod tests {
     #[test]
     fn current_version_is_non_empty() {
         assert!(!current_version().is_empty());
+    }
+
+    #[test]
+    fn downloads_release_larger_than_ten_mib() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/asset", listener.local_addr().unwrap());
+        let bytes = vec![42; 11 * 1024 * 1024];
+        let expected = bytes.clone();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            while !request.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                stream.read_exact(&mut byte).unwrap();
+                request.push(byte[0]);
+            }
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                bytes.len()
+            )
+            .unwrap();
+            stream.write_all(&bytes).unwrap();
+        });
+
+        let actual = download(&url);
+        server.join().unwrap();
+        assert_eq!(actual.unwrap(), expected);
     }
 }
