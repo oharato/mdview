@@ -60,14 +60,18 @@ pub fn is_svg(path: &Path) -> bool {
 }
 
 /// Rasterize an SVG file at `target_width` pixels, preserving transparency.
-pub fn rasterize_svg_file(path: &Path, target_width: u32) -> Result<RgbaImage> {
+pub fn rasterize_svg_file(path: &Path, target_width: u32, upscale: bool) -> Result<RgbaImage> {
     let svg = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read SVG: {}", path.display()))?;
-    rasterize_svg(&svg, target_width)
+    rasterize_svg_with_upscale(&svg, target_width, upscale)
 }
 
 /// Rasterize an SVG string at `target_width` pixels, preserving transparency.
 pub fn rasterize_svg(svg: &str, target_width: u32) -> Result<RgbaImage> {
+    rasterize_svg_with_upscale(svg, target_width, true)
+}
+
+fn rasterize_svg_with_upscale(svg: &str, target_width: u32, upscale: bool) -> Result<RgbaImage> {
     let options = resvg::usvg::Options {
         font_family: "Noto Sans CJK JP".to_string(),
         fontdb: system_fonts(),
@@ -80,7 +84,11 @@ pub fn rasterize_svg(svg: &str, target_width: u32) -> Result<RgbaImage> {
         anyhow::bail!("SVG has no size");
     }
 
-    let width = target_width.max(1);
+    let width = if upscale {
+        target_width.max(1)
+    } else {
+        target_width.max(1).min(size.width().ceil().max(1.0) as u32)
+    };
     let scale = width as f32 / size.width();
     let height = (size.height() * scale).ceil().max(1.0) as u32;
     let mut pixmap =
@@ -180,14 +188,41 @@ pub fn to_png(image: &RgbaImage, compression: CompressionType) -> Result<Vec<u8>
     Ok(output)
 }
 
-/// Resize to exact dimensions using Lanczos3.
+/// Resize to exact dimensions, preserving transparent edges without ringing.
 pub fn resize_image(image: &RgbaImage, width: u32, height: u32) -> RgbaImage {
     let width = width.max(1);
     let height = height.max(1);
     if image.width() == width && image.height() == height {
         return image.clone();
     }
-    image::imageops::resize(image, width, height, ResizeFilter::Lanczos3)
+    if image.pixels().all(|pixel| pixel[3] == 255) {
+        return image::imageops::resize(image, width, height, ResizeFilter::Lanczos3);
+    }
+
+    // Resampling straight alpha mixes invisible RGB into edges; Lanczos also adds halos.
+    let mut premultiplied = image::Rgba32FImage::from_fn(image.width(), image.height(), |x, y| {
+        image::Rgba(
+            image
+                .get_pixel(x, y)
+                .0
+                .map(|channel| channel as f32 / 255.0),
+        )
+    });
+    for pixel in premultiplied.pixels_mut() {
+        for channel in 0..3 {
+            pixel[channel] *= pixel[3];
+        }
+    }
+    let mut resized =
+        image::imageops::resize(&premultiplied, width, height, ResizeFilter::Triangle);
+    for pixel in resized.pixels_mut() {
+        if pixel[3] > 0.0 {
+            for channel in 0..3 {
+                pixel[channel] /= pixel[3];
+            }
+        }
+    }
+    image::DynamicImage::ImageRgba32F(resized).into_rgba8()
 }
 
 /// Composite an RGBA image over an opaque background.
@@ -392,6 +427,52 @@ mod tests {
         );
         assert_eq!(parse_background("auto", false), Some([12, 12, 12]));
         assert_eq!(parse_background("auto", true), Some([255, 255, 255]));
+    }
+
+    #[test]
+    fn svg_file_respects_intrinsic_size_unless_upscale_is_enabled() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/diagram.svg");
+        for (target, upscale, expected) in [
+            (1040, false, (520, 170)),
+            (260, false, (260, 85)),
+            (1040, true, (1040, 340)),
+        ] {
+            let image = rasterize_svg_file(&path, target, upscale).unwrap();
+            assert_eq!(image.dimensions(), expected);
+        }
+    }
+
+    #[test]
+    fn resizing_transparent_line_does_not_create_parallel_halos() {
+        let mut image = RgbaImage::new(128, 128);
+        for x in 0..128 {
+            image.put_pixel(x, 64, Rgba([211, 211, 211, 255]));
+        }
+        let resized = resize_image(&image, 96, 96);
+        let alpha: Vec<_> = (0..96).map(|y| resized.get_pixel(48, y)[3]).collect();
+        let bands = usize::from(alpha[0] > 0)
+            + alpha
+                .windows(2)
+                .filter(|pair| pair[0] == 0 && pair[1] > 0)
+                .count();
+        assert_eq!(bands, 1, "a single line must stay a single band: {alpha:?}");
+    }
+
+    #[test]
+    fn resizing_transparency_preserves_foreground_colour() {
+        let mut image = RgbaImage::from_pixel(16, 16, Rgba([255, 0, 0, 0]));
+        for y in 4..12 {
+            for x in 4..12 {
+                image.put_pixel(x, y, Rgba([0, 0, 255, 255]));
+            }
+        }
+        let resized = resize_image(&image, 11, 11);
+        let mut has_partial_alpha = false;
+        for pixel in resized.pixels().filter(|pixel| pixel[3] > 0) {
+            has_partial_alpha |= pixel[3] < 255;
+            assert_eq!([pixel[0], pixel[1], pixel[2]], [0, 0, 255]);
+        }
+        assert!(has_partial_alpha);
     }
 
     #[test]

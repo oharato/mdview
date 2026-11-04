@@ -639,7 +639,7 @@ fn render_image(
 
     let started = Instant::now();
     let image = if images::is_svg(&path) {
-        images::rasterize_svg_file(&path, mermaid_raster_width(options))?
+        images::rasterize_svg_file(&path, mermaid_raster_width(options), options.upscale)?
     } else {
         images::load_raster(&path)?
     };

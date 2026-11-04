@@ -35,7 +35,7 @@ fn renders_demo_without_colour() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("┄┄┄表"));
+    assert!(stdout.contains("### 表"));
     assert!(stdout.contains("Kitty graphics"));
     assert!(stdout.contains("[画像: mermaid]"));
     assert!(!stdout.contains("\x1b["), "no ANSI expected with -c");

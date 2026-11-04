@@ -17,7 +17,7 @@ Linux 向けの単体バイナリとして配布できます。
 
 - **単体バイナリ** — Node.js も Python も外部 `mdcat` も不要。release ビルドは約 12MB
 - **mdcat 互換のテキスト** — `pulldown-cmark-mdcat 2.9.0` を使用。
-  デモでは `mdcat 2.7.1 --ansi --columns 100` の出力とバイト単位で一致。
+  見出しは階層に応じた `#`・`##`・`###` と本文をまとめて太字で表示。
   （2.7.1 は crates.io で yanked、2.10 以降は別メンテナのフォークのため 2.9.0 に固定）
 - **CJK 対応の表** — mdcat の表レンダラはバイト幅で列を計算するため、日本語・絵文字が
   ずれる。mdview は East Asian Width を考慮して自前で描画
@@ -127,7 +127,8 @@ cat README.md | mdview
 Kitty / Sixel / iTerm2 では、ラスター画像は既定で原寸を上限とし、幅・高さに収まらない場合は縮小します。
 `--upscale` はページャ内でも有効です。ANSI 半ブロック表示はこれらのフラグを使わず、
 `--image-width` と `--image-max-height` に合わせてセル単位で描画します。
-Mermaid / SVG は指定解像度でラスタライズしてから表示サイズを調整します。
+SVG 画像も既定では元のサイズを超えて拡大せず、`--upscale` で拡大できます。
+Mermaid は表示に合わせた解像度でラスタライズしてから表示サイズを調整します。
 
 ### 環境変数
 
@@ -228,7 +229,7 @@ cargo test
 - 画像拡大の既定無効・明示指定・同時指定時の優先順位と表示サイズ
 - CLI の end-to-end（`tests/cli.rs`）
 
-`mdcat` とのテキスト一致を確認するには、同じ桁数を指定してください。
+`mdcat` とテキストを比較するには、同じ桁数を指定してください。見出しの装飾と CJK 対応の表には表示差があります。
 
 ```bash
 mdview --dump-text -w 100 examples/demo.md > /tmp/rs.txt

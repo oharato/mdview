@@ -102,9 +102,14 @@ pub fn strip_ansi(text: &str) -> String {
     ANSI_RE.replace_all(text, "").into_owned()
 }
 
-/// True when this is an mdcat heading line (starts with `┄` after ANSI is removed).
+/// True for a rendered heading with one to six `#` characters and a space.
 pub fn is_heading_line(line: &str) -> bool {
-    strip_ansi(line).starts_with('┄')
+    if line.contains('\x1b') && !line.starts_with("\x1b[1m") {
+        return false;
+    }
+    let plain = strip_ansi(line);
+    let level = plain.bytes().take_while(|&byte| byte == b'#').count();
+    (1..=6).contains(&level) && plain[level..].starts_with(' ')
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -495,8 +500,12 @@ mod tests {
 
     #[test]
     fn detects_heading_lines() {
-        assert!(is_heading_line("┄ Title"));
-        assert!(is_heading_line("\x1b[1m┄\x1b[0m Title"));
+        assert!(is_heading_line("# Title"));
+        assert!(is_heading_line("\x1b[1m### Title\x1b[0m"));
+        assert!(!is_heading_line("#hashtag"));
+        assert!(!is_heading_line("####### Not a heading"));
+        assert!(!is_heading_line("    # code"));
+        assert!(!is_heading_line("\x1b[33m# code\x1b[0m"));
         assert!(!is_heading_line("normal"));
     }
 
