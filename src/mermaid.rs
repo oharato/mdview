@@ -1,7 +1,7 @@
 //! Mermaid -> SVG -> PNG pipeline using the pure-Rust renderer.
 //!
-//! mdview currently uses Pele (JavaScript). The Rust port swaps that for
-//! `mermaid-rs-renderer`. The theme background is forced transparent so the
+//! Uses the vendored `mermaid-rs-renderer` with local diagram fixes documented
+//! in its PATCHES.md. The theme background is forced transparent so the
 //! terminal background shows through.
 
 use std::path::{Path, PathBuf};

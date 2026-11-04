@@ -101,15 +101,15 @@ cat README.md | mdview
 
 | オプション | 説明 |
 |---|---|
-| `-w, --width N` | テキストの最大桁数（既定: 端末幅、最大 120） |
-| `-i, --image-width N` | 画像・図の横幅（端末桁数、既定: 端末幅 - 2） |
+| `-w, --width N` | テキストの最大桁数（既定: 端末幅と 120 の小さい方。指定値は 1〜400） |
+| `-i, --image-width N` | 画像・図の最大横幅（端末桁数、既定: 端末幅 - 2 を 10〜200 に制限。指定値は 1〜400） |
 | `--image-max-height N` | 画像・図の最大高さ（端末行数、既定: 端末の 2/3） |
 | `-r, --renderer auto\|kitty\|sixel\|iterm\|blocks` | 描画方式（既定: 自動） |
 | `--colours truecolor\|256` | 半ブロック描画時の色数 |
 | `--image-colours N` | Sixel の色数（既定: 256、2〜256） |
 | `--image-bg auto\|none\|#RRGGBB` | 透過画像の扱い。`auto` はアルファ対応方式なら透過を保持し、Sixel は背景色に合成 |
-| `--pixel-scale F` | セルサイズを取得できない端末での倍率（HiDPI なら 2） |
-| `--upscale / --no-upscale` | 小さい画像を端末幅まで拡大（既定: 無効。`--upscale` で有効・最大 3 倍） |
+| `--pixel-scale F` | 画像の目標横幅・ラスタライズ幅に掛ける倍率（既定: 1、HiDPI なら 2） |
+| `--upscale / --no-upscale` | Kitty / Sixel / iTerm2 で小さい画像を指定幅を目標に拡大（既定: 無効、最大 3 倍）。両方指定すると `--no-upscale` を優先 |
 | `--light` | 明るい背景の端末として扱う |
 | `-c, --no-colour` | 色・画像を無効化 |
 | `--mermaid-theme auto\|dark\|default\|neutral\|modern` | Mermaid の配色（既定: auto） |
@@ -123,6 +123,11 @@ cat README.md | mdview
 | `--update` | 最新リリースへ自己更新（Linux） |
 | `-V, --version` | バージョン |
 | `-h, --help` | ヘルプ |
+
+Kitty / Sixel / iTerm2 では、ラスター画像は既定で原寸を上限とし、幅・高さに収まらない場合は縮小します。
+`--upscale` はページャ内でも有効です。ANSI 半ブロック表示はこれらのフラグを使わず、
+`--image-width` と `--image-max-height` に合わせてセル単位で描画します。
+Mermaid / SVG は指定解像度でラスタライズしてから表示サイズを調整します。
 
 ### 環境変数
 
@@ -219,7 +224,8 @@ cargo test
 - 見出し・セクション抽出
 - ページャのページ分割
 - 端末応答のパース
-- Mermaid の SVG / PNG / キャッシュ
+- Mermaid の SVG / PNG / キャッシュ、クラス図の4方向の多重度配置、ER図の記号・ラベルの衝突回避
+- 画像拡大の既定無効・明示指定・同時指定時の優先順位と表示サイズ
 - CLI の end-to-end（`tests/cli.rs`）
 
 `mdcat` とのテキスト一致を確認するには、同じ桁数を指定してください。
@@ -234,8 +240,8 @@ diff -u /tmp/mdcat.txt /tmp/rs.txt
 
 ## リリース
 
-`.github/workflows/rust.yml` が fmt / clippy / test / release build を実行します。
-タグ `v*` を push すると `.github/workflows/rust-release.yml` が Linux バイナリを作成し、
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) が fmt / clippy / test / release build を実行します。
+タグ `v*` を push すると [`.github/workflows/release.yml`](.github/workflows/release.yml) が Linux バイナリを作成し、
 以下の asset を GitHub Releases に添付します。
 
 - `mdview-x86_64-unknown-linux-gnu`
@@ -269,7 +275,7 @@ Herdr のペイン内で `mdview --check` が `kitty support: yes` / `kitty tran
 
 ```bash
 # まず画像 1 枚だけの短い文書で確認
-printf '# test\n\n![](examples/sample.png)\n' > /tmp/herdr-test.md
+printf '# test\n\n![](%s/examples/sample.png)\n' "$PWD" > /tmp/herdr-test.md
 mdview /tmp/herdr-test.md
 
 # Herdr 内で別の Kitty 画像ツールが表示できるか
@@ -291,27 +297,32 @@ Herdr の設定を変えた後は `herdr server stop` → `herdr` で再起動�
 
 ### Mermaid レンダラのローカルパッチ
 
-`mermaid-rs-renderer 0.3.1` は `vendor/mermaid-rs-renderer/` に vendoring し、次の 2 点だけ
+`mermaid-rs-renderer 0.3.1` は `vendor/mermaid-rs-renderer/` に vendoring し、次の
 パッチを当てています（[`PATCHES.md`](vendor/mermaid-rs-renderer/PATCHES.md)）。
 
 - シーケンス図のラベル折り返し上限を 14 → 40 文字へ
 - 参加者のライフラインを `stroke-width: 0.5` → `1.0` へ
+- クラス図の多重度ラベルを関係線の横に配置
+- ER 図の端点記号をノードの外側に描画し、関係名を衝突回避の対象にする
 
 上流の `LayoutConfig` では変更できないため、`Cargo.toml` の `[patch.crates-io]` で
-ローカルパスを参照しています。上流で修正されたら vendoring を外してください。
+ローカルパスを参照しています。上流へ移行する際は、全パッチと回帰テストの結果を確認してください。
+描画変更を反映するため、Mermaid のキャッシュキーには描画バージョンを含めています。
 
 ## 既知の制限・旧 Node 版との違い
 
 - **Mermaid の見た目**: `mermaid-rs-renderer 0.3.1` は開発初期の Pure Rust 実装です。
-  flowchart / sequence / pie は実用的ですが、class diagram のレイアウトは Pele と
-  一致しません。Mermaid の完全な再現が必要な場合は、Pele を QuickJS 等に埋め込む
-  方式に切り替える必要があります。
+  class / ER 図の表示にはローカル修正を加えていますが、Mermaid 本家や旧 Node 版の
+  Pele とレイアウトが完全に一致するわけではありません。
 - **画像形式**: `sharp`/libvips ほど多くの形式は扱えません。現在は PNG / JPEG / GIF /
   WebP / BMP / TIFF / SVG です。AVIF / HEIC などは未対応です。
 - **Linux のみ**: 端末プローブが `/dev/tty` と termios を使うため、Windows ネイティブは
   未対応です。
 - **`MDVIEW_MDCAT` は不要**: mdcat はライブラリとして組み込まれています。
   外部バイナリのバージョン確認（`--check` の mdcat 行）もありません。
+- **表の絵文字幅**: CJK と、✅・⭐・❌などの単独の wide 絵文字に対応します。
+  幅は手動のコードポイント表で計算し、VS16（例: `❤️`）による絵文字化や
+  ZWJ で結合した絵文字列の幅は正しく扱えない場合があります。
 - **表のインライン記法**: 太字・斜体・打ち消し線・コード・リンクに対応。
   折り返しはせず、幅に収まらない場合は `…` で切り詰めます。
 - **Sixel**: Windows Terminal 1.22+ / xterm など。WezTerm は DA1 で Sixel 対応を
