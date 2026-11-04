@@ -44,6 +44,39 @@ static STRIKE_RE: LazyLock<Regex> =
 
 const WIDE_RANGES: &[(u32, u32)] = &[
     (0x1100, 0x115f),
+    (0x231a, 0x231b),
+    (0x23e9, 0x23ec),
+    (0x23f0, 0x23f0),
+    (0x23f3, 0x23f3),
+    (0x25fd, 0x25fe),
+    (0x2614, 0x2615),
+    (0x2648, 0x2653),
+    (0x267f, 0x267f),
+    (0x2693, 0x2693),
+    (0x26a1, 0x26a1),
+    (0x26aa, 0x26ab),
+    (0x26bd, 0x26be),
+    (0x26c4, 0x26c5),
+    (0x26ce, 0x26ce),
+    (0x26d4, 0x26d4),
+    (0x26ea, 0x26ea),
+    (0x26f2, 0x26f3),
+    (0x26f5, 0x26f5),
+    (0x26fa, 0x26fa),
+    (0x26fd, 0x26fd),
+    (0x2705, 0x2705),
+    (0x270a, 0x270b),
+    (0x2728, 0x2728),
+    (0x274c, 0x274c),
+    (0x274e, 0x274e),
+    (0x2753, 0x2755),
+    (0x2757, 0x2757),
+    (0x2795, 0x2797),
+    (0x27b0, 0x27b0),
+    (0x27bf, 0x27bf),
+    (0x2b1b, 0x2b1c),
+    (0x2b50, 0x2b50),
+    (0x2b55, 0x2b55),
     (0x2e80, 0x303e),
     (0x3041, 0x33ff),
     (0x3400, 0x4dbf),
@@ -431,6 +464,9 @@ mod tests {
         assert_eq!(display_width("半ブロック"), 10);
         assert_eq!(display_width("ＡＢ"), 4);
         assert_eq!(display_width("🎨"), 2);
+        for ch in "⌚⌛⏩⏬⏰⏳◽◾☔☕♈♓♿⚓⚡⚪⚫⚽⚾⛄⛅⛎⛔⛪⛲⛳⛵⛺⛽✅✊✋✨❌❎❓❕❗➕➗➰➿⬛⬜⭐⭕".chars() {
+            assert_eq!(display_width(&ch.to_string()), 2, "{ch}");
+        }
         assert_eq!(display_width("e\u{0301}"), 1);
     }
 
@@ -473,6 +509,26 @@ mod tests {
             output.trim_end().lines().map(display_width).collect();
         assert_eq!(widths.len(), 1);
         assert!(!output.contains("\x1b["));
+    }
+
+    #[test]
+    fn bmp_emoji_table_columns_align() {
+        let (_, tables) = extract_tables(
+            "| 名前 | 説明 |\n|---|---|\n| テキスト | abc |\n| 絵文字 ✅ | 🍣 寿司 |",
+        );
+        let output = render_table(&tables[0], 80, false);
+        let rows: Vec<_> = output.lines().collect();
+        assert_eq!(rows[3], " テキスト     abc     ");
+        assert_eq!(rows[4], " 絵文字 ✅    🍣 寿司 ");
+    }
+
+    #[test]
+    fn truncation_reserves_two_cells_for_bmp_emoji() {
+        assert_eq!(truncate("✅⭐❌", 6), "✅⭐❌");
+        assert_eq!(truncate("✅⭐❌", 5), "✅⭐…");
+        assert_eq!(truncate("✅⭐❌", 4), "✅…");
+        assert_eq!(truncate("✅⭐❌", 1), "…");
+        assert_eq!(truncate("✅⭐❌", 0), "");
     }
 
     #[test]
